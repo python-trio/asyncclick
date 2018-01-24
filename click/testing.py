@@ -18,6 +18,11 @@ clickpkg = sys.modules[__name__.rsplit('.', 1)[0]]
 import io
 from ._compat import _find_binary_reader
 
+def debug():
+    import pdb,sys
+    stdin = getattr(sys,'old_stdin',sys.stdin)
+    stdout = getattr(sys,'old_stdout',sys.stdout)
+    pdb.Pdb(stdin=stdin, stdout=stdout).set_trace(sys._getframe().f_back)
 
 class EchoingStdin(object):
 
@@ -151,6 +156,9 @@ class CliRunner(object):
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
+        sys.old_stdin = sys.stdin
+        sys.old_stdout = sys.stdout
+        sys.old_stderr = sys.stderr
         old_forced_width = clickpkg.formatting.FORCED_WIDTH
         clickpkg.formatting.FORCED_WIDTH = 80
 
@@ -222,9 +230,12 @@ class CliRunner(object):
                         pass
                 else:
                     os.environ[key] = value
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            sys.stdin = old_stdin
+            sys.stdout = sys.old_stdout
+            sys.stderr = sys.old_stderr
+            sys.stdin = sys.old_stdin
+            sys.old_stdout = old_stdout
+            sys.old_stderr = old_stderr
+            sys.old_stdin = old_stdin
             clickpkg.termui.visible_prompt_func = old_visible_prompt_func
             clickpkg.termui.hidden_prompt_func = old_hidden_prompt_func
             clickpkg.termui._getchar = old__getchar_func
