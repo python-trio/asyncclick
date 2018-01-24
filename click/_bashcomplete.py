@@ -2,6 +2,7 @@ import collections
 import copy
 import os
 import re
+import trio
 
 from .utils import echo
 from .parser import split_arg_string
@@ -34,7 +35,7 @@ def get_completion_script(prog_name, complete_var):
     }).strip() + ';'
 
 
-def resolve_ctx(cli, prog_name, args):
+async def resolve_ctx(cli, prog_name, args):
     """
     Parse into a hierarchy of contexts. Contexts are connected through the parent variable.
     :param cli: command definition
@@ -42,14 +43,14 @@ def resolve_ctx(cli, prog_name, args):
     :param args: full list of args
     :return: the final context/command parsed
     """
-    ctx = cli.make_context(prog_name, args, resilient_parsing=True)
+    ctx = await cli.make_context(prog_name, args, resilient_parsing=True)
     args_remaining = ctx.protected_args + ctx.args
     while ctx is not None and args_remaining:
         if isinstance(ctx.command, MultiCommand):
             cmd = ctx.command.get_command(ctx, args_remaining[0])
             if cmd is None:
                 return None
-            ctx = cmd.make_context(
+            ctx = await cmd.make_context(
                 args_remaining[0], args_remaining[1:], parent=ctx, resilient_parsing=True)
             args_remaining = ctx.protected_args + ctx.args
         else:
@@ -152,7 +153,7 @@ def get_choices(cli, prog_name, args, incomplete):
     """
     all_args = copy.deepcopy(args)
 
-    ctx = resolve_ctx(cli, prog_name, args)
+    ctx = trio.run(resolve_ctx,cli, prog_name, args)
     if ctx is None:
         return []
 

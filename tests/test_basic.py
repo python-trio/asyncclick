@@ -2,6 +2,7 @@
 import os
 import uuid
 import click
+import pytest
 
 
 def test_basic_functionality(runner):
@@ -23,13 +24,14 @@ def test_basic_functionality(runner):
     assert result.exit_code == 0
 
 
-def test_return_values():
+@pytest.mark.trio
+async def test_return_values():
     @click.command()
     def cli():
         return 42
 
-    with cli.make_context('foo', []) as ctx:
-        rv = cli.invoke(ctx)
+    with await cli.make_context('foo', []) as ctx:
+        rv = await cli.invoke(ctx)
         assert rv is 42
 
 

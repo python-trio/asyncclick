@@ -12,7 +12,8 @@ from click._compat import WIN
 from io import BytesIO as ReasonableBytesIO
 
 
-def test_runner():
+@pytest.mark.trio
+async def test_runner():
     @click.command()
     def test():
         i = click.get_binary_stream('stdin')
@@ -25,17 +26,18 @@ def test_runner():
             o.flush()
 
     runner = CliRunner()
-    result = runner.invoke(test, input='Hello World!\n')
+    result = await runner.invoke(test, input='Hello World!\n')
     assert not result.exception
     assert result.output == 'Hello World!\n'
 
     runner = CliRunner(echo_stdin=True)
-    result = runner.invoke(test, input='Hello World!\n')
+    result = await runner.invoke(test, input='Hello World!\n')
     assert not result.exception
     assert result.output == 'Hello World!\nHello World!\n'
 
 
-def test_runner_with_stream():
+@pytest.mark.trio
+async def test_runner_with_stream():
     @click.command()
     def test():
         i = click.get_binary_stream('stdin')
@@ -48,24 +50,25 @@ def test_runner_with_stream():
             o.flush()
 
     runner = CliRunner()
-    result = runner.invoke(test, input=ReasonableBytesIO(b'Hello World!\n'))
+    result = await runner.invoke(test, input=ReasonableBytesIO(b'Hello World!\n'))
     assert not result.exception
     assert result.output == 'Hello World!\n'
 
     runner = CliRunner(echo_stdin=True)
-    result = runner.invoke(test, input=ReasonableBytesIO(b'Hello World!\n'))
+    result = await runner.invoke(test, input=ReasonableBytesIO(b'Hello World!\n'))
     assert not result.exception
     assert result.output == 'Hello World!\nHello World!\n'
 
 
-def test_prompts():
+@pytest.mark.trio
+async def test_prompts():
     @click.command()
     @click.option('--foo', prompt=True)
     def test(foo):
         click.echo('foo=%s' % foo)
 
     runner = CliRunner()
-    result = runner.invoke(test, input='wau wau\n')
+    result = await runner.invoke(test, input='wau wau\n')
     assert not result.exception
     assert result.output == 'Foo: wau wau\nfoo=wau wau\n'
 
@@ -75,23 +78,25 @@ def test_prompts():
         click.echo('foo=%s' % foo)
 
     runner = CliRunner()
-    result = runner.invoke(test, input='wau wau\n')
+    result = await runner.invoke(test, input='wau wau\n')
     assert not result.exception
     assert result.output == 'Foo: \nfoo=wau wau\n'
 
 
-def test_getchar():
+@pytest.mark.trio
+async def test_getchar():
     @click.command()
     def continue_it():
         click.echo(click.getchar())
 
     runner = CliRunner()
-    result = runner.invoke(continue_it, input='y')
+    result = await runner.invoke(continue_it, input='y')
     assert not result.exception
     assert result.output == 'y\n'
 
 
-def test_catch_exceptions():
+@pytest.mark.trio
+async def test_catch_exceptions():
     class CustomError(Exception):
         pass
 
@@ -101,49 +106,52 @@ def test_catch_exceptions():
 
     runner = CliRunner()
 
-    result = runner.invoke(cli)
+    result = await runner.invoke(cli)
     assert isinstance(result.exception, CustomError)
     assert type(result.exc_info) is tuple
     assert len(result.exc_info) == 3
 
     with pytest.raises(CustomError):
-        runner.invoke(cli, catch_exceptions=False)
+        await runner.invoke(cli, catch_exceptions=False)
 
     CustomError = SystemExit
 
-    result = runner.invoke(cli)
+    result = await runner.invoke(cli)
     assert result.exit_code == 1
 
 
 @pytest.mark.skipif(WIN, reason='Test does not make sense on Windows.')
-def test_with_color():
+@pytest.mark.trio
+async def test_with_color():
     @click.command()
     def cli():
         click.secho('hello world', fg='blue')
 
     runner = CliRunner()
 
-    result = runner.invoke(cli)
+    result = await runner.invoke(cli)
     assert result.output == 'hello world\n'
     assert not result.exception
 
-    result = runner.invoke(cli, color=True)
+    result = await runner.invoke(cli, color=True)
     assert result.output == click.style('hello world', fg='blue') + '\n'
     assert not result.exception
 
 
-def test_with_color_but_pause_not_blocking():
+@pytest.mark.trio
+async def test_with_color_but_pause_not_blocking():
     @click.command()
     def cli():
         click.pause()
 
     runner = CliRunner()
-    result = runner.invoke(cli, color=True)
+    result = await runner.invoke(cli, color=True)
     assert not result.exception
     assert result.output == ''
 
 
-def test_exit_code_and_output_from_sys_exit():
+@pytest.mark.trio
+async def test_exit_code_and_output_from_sys_exit():
     # See issue #362
     @click.command()
     def cli_string():
@@ -166,24 +174,25 @@ def test_exit_code_and_output_from_sys_exit():
 
     runner = CliRunner()
 
-    result = runner.invoke(cli_string)
+    result = await runner.invoke(cli_string)
     assert result.exit_code == 1
     assert result.output == 'hello world\nerror\n'
 
-    result = runner.invoke(cli_int)
+    result = await runner.invoke(cli_int)
     assert result.exit_code == 1
     assert result.output == 'hello world\n'
 
-    result = runner.invoke(cli_float)
+    result = await runner.invoke(cli_float)
     assert result.exit_code == 1
     assert result.output == 'hello world\n1.0\n'
 
-    result = runner.invoke(cli_no_error)
+    result = await runner.invoke(cli_no_error)
     assert result.exit_code == 0
     assert result.output == 'hello world\n'
 
 
-def test_env():
+@pytest.mark.trio
+async def test_env():
     @click.command()
     def cli_env():
         click.echo('ENV=%s' % os.environ['TEST_CLICK_ENV'])
@@ -194,7 +203,7 @@ def test_env():
     env = dict(env_orig)
     assert 'TEST_CLICK_ENV' not in env
     env['TEST_CLICK_ENV'] = 'some_value'
-    result = runner.invoke(cli_env, env=env)
+    result = await runner.invoke(cli_env, env=env)
     assert result.exit_code == 0
     assert result.output == 'ENV=some_value\n'
 
@@ -208,7 +217,8 @@ def test_env():
     (['--foo', 'one two'], 'one two\n'),
     ('--foo "one two"', 'one two\n'),
 ])
-def test_args(args, expected_output):
+@pytest.mark.trio
+async def test_args(args, expected_output):
 
     @click.command()
     @click.option('--foo', default='bar')
@@ -216,6 +226,6 @@ def test_args(args, expected_output):
         click.echo(foo)
 
     runner = CliRunner()
-    result = runner.invoke(cli_args, args=args)
+    result = await runner.invoke(cli_args, args=args)
     assert result.exit_code == 0
     assert result.output == expected_output

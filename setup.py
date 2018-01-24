@@ -25,4 +25,10 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
     ],
+    build_requires=[
+        'pytest-trio',
+    ],
+    install_requires=[
+        'trio>=0.3',
+    ],
 )

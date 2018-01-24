@@ -1,9 +1,11 @@
 import errno
 import os
 import sys
+import trio
+from inspect import iscoroutine
 from contextlib import contextmanager
 from itertools import repeat
-from functools import update_wrapper
+from functools import update_wrapper, partial
 
 from .types import convert_type, IntRange, BOOL
 from .utils import make_str, make_default_short_help, echo, get_os_args
@@ -72,7 +74,7 @@ def batch(iterable, batch_size):
     return list(zip(*repeat(iter(iterable), batch_size)))
 
 
-def invoke_param_callback(callback, ctx, param, value):
+async def invoke_param_callback(callback, ctx, param, value):
     code = getattr(callback, '__code__', None)
     args = getattr(code, 'co_argcount', 3)
 
@@ -83,8 +85,12 @@ def invoke_param_callback(callback, ctx, param, value):
                      'signature for such callbacks starting with '
                      'click 2.0 is (ctx, param, value).'
                      % callback), stacklevel=3)
-        return callback(ctx, value)
-    return callback(ctx, param, value)
+        rv = callback(ctx, value)
+    else:
+        rv = callback(ctx, param, value)
+    if iscoroutine(rv):
+        rv = await rv
+    return rv
 
 
 @contextmanager
@@ -504,7 +510,7 @@ class Context(object):
         """
         return self.command.get_help(self)
 
-    def invoke(*args, **kwargs):
+    async def invoke(*args, **kwargs):
         """Invokes a command callback in exactly the way it expects.  There
         are two ways to invoke this method:
 
@@ -541,9 +547,12 @@ class Context(object):
         args = args[2:]
         with augment_usage_errors(self):
             with ctx:
-                return callback(*args, **kwargs)
+                rv = callback(*args, **kwargs)
+                if iscoroutine(rv):
+                    rv = await rv
+                return rv
 
-    def forward(*args, **kwargs):
+    async def forward(*args, **kwargs):
         """Similar to :meth:`invoke` but fills in default keyword
         arguments from the current context if the other command expects
         it.  This cannot invoke callbacks directly, only other commands.
@@ -559,7 +568,7 @@ class Context(object):
             if param not in kwargs:
                 kwargs[param] = self.params[param]
 
-        return self.invoke(cmd, **kwargs)
+        return await self.invoke(cmd, **kwargs)
 
 
 class BaseCommand(object):
@@ -607,7 +616,7 @@ class BaseCommand(object):
     def get_help(self, ctx):
         raise NotImplementedError('Base commands cannot get help')
 
-    def make_context(self, info_name, args, parent=None, **extra):
+    async def make_context(self, info_name, args, parent=None, **extra):
         """This function when given an info name and arguments will kick
         off the parsing and create a new :class:`Context`.  It does not
         invoke the actual command callback though.
@@ -627,10 +636,10 @@ class BaseCommand(object):
                 extra[key] = value
         ctx = Context(self, info_name=info_name, parent=parent, **extra)
         with ctx.scope(cleanup=False):
-            self.parse_args(ctx, args)
+            await self.parse_args(ctx, args)
         return ctx
 
-    def parse_args(self, ctx, args):
+    async def parse_args(self, ctx, args):
         """Given a context and a list of arguments this creates the parser
         and parses the arguments, then modifies the context as necessary.
         This is automatically invoked by :meth:`make_context`.
@@ -644,7 +653,7 @@ class BaseCommand(object):
         """
         raise NotImplementedError('Base commands are not invokable by default')
 
-    def main(self, args=None, prog_name=None, complete_var=None,
+    async def main(self, args=None, prog_name=None, complete_var=None,
              standalone_mode=True, **extra):
         """This is the way to invoke a script with all the bells and
         whistles as a command line application.  This will always terminate
@@ -699,8 +708,8 @@ class BaseCommand(object):
 
         try:
             try:
-                with self.make_context(prog_name, args, **extra) as ctx:
-                    rv = self.invoke(ctx)
+                with await self.make_context(prog_name, args, **extra) as ctx:
+                    rv = await self.invoke(ctx)
                     if not standalone_mode:
                         return rv
                     ctx.exit()
@@ -725,7 +734,10 @@ class BaseCommand(object):
 
     def __call__(self, *args, **kwargs):
         """Alias for :meth:`main`."""
-        return self.main(*args, **kwargs)
+        main = self.main
+        if kwargs:
+            main = partial(main, **kwargs)
+        return trio.run(main,*args)
 
 
 class Command(BaseCommand):
@@ -880,13 +892,13 @@ class Command(BaseCommand):
             with formatter.indentation():
                 formatter.write_text(self.epilog)
 
-    def parse_args(self, ctx, args):
+    async def parse_args(self, ctx, args):
         parser = self.make_parser(ctx)
-        opts, args, param_order = parser.parse_args(args=args)
+        opts, args, param_order = await parser.parse_args(args=args)
 
         for param in iter_params_for_processing(
                 param_order, self.get_params(ctx)):
-            value, args = param.handle_parse_result(ctx, opts, args)
+            value, args = await param.handle_parse_result(ctx, opts, args)
 
         if args and not ctx.allow_extra_args and not ctx.resilient_parsing:
             ctx.fail('Got unexpected extra argument%s (%s)'
@@ -896,12 +908,12 @@ class Command(BaseCommand):
         ctx.args = args
         return args
 
-    def invoke(self, ctx):
+    async def invoke(self, ctx):
         """Given a context, this invokes the attached callback (if it exists)
         in the right way.
         """
         if self.callback is not None:
-            return ctx.invoke(self.callback, **ctx.params)
+            return await ctx.invoke(self.callback, **ctx.params)
 
 
 class MultiCommand(Command):
@@ -1021,12 +1033,12 @@ class MultiCommand(Command):
             with formatter.section('Commands'):
                 formatter.write_dl(rows)
 
-    def parse_args(self, ctx, args):
+    async def parse_args(self, ctx, args):
         if not args and self.no_args_is_help and not ctx.resilient_parsing:
             echo(ctx.get_help(), color=ctx.color)
             ctx.exit()
 
-        rest = Command.parse_args(self, ctx, args)
+        rest = await Command.parse_args(self, ctx, args)
         if self.chain:
             ctx.protected_args = rest
             ctx.args = []
@@ -1035,10 +1047,10 @@ class MultiCommand(Command):
 
         return ctx.args
 
-    def invoke(self, ctx):
-        def _process_result(value):
+    async def invoke(self, ctx):
+        async def _process_result(value):
             if self.result_callback is not None:
-                value = ctx.invoke(self.result_callback, value,
+                value = await ctx.invoke(self.result_callback, value,
                                    **ctx.params)
             return value
 
@@ -1051,10 +1063,10 @@ class MultiCommand(Command):
             # list (which means that no subcommand actually was executed).
             if self.invoke_without_command:
                 if not self.chain:
-                    return Command.invoke(self, ctx)
+                    return await Command.invoke(self, ctx)
                 with ctx:
-                    Command.invoke(self, ctx)
-                    return _process_result([])
+                    await Command.invoke(self, ctx)
+                    return await _process_result([])
             ctx.fail('Missing command.')
 
         # Fetch args back out
@@ -1069,12 +1081,12 @@ class MultiCommand(Command):
             # Make sure the context is entered so we do not clean up
             # resources until the result processor has worked.
             with ctx:
-                cmd_name, cmd, args = self.resolve_command(ctx, args)
+                cmd_name, cmd, args = await self.resolve_command(ctx, args)
                 ctx.invoked_subcommand = cmd_name
-                Command.invoke(self, ctx)
-                sub_ctx = cmd.make_context(cmd_name, args, parent=ctx)
+                await Command.invoke(self, ctx)
+                sub_ctx = await cmd.make_context(cmd_name, args, parent=ctx)
                 with sub_ctx:
-                    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                    return await _process_result(await sub_ctx.command.invoke(sub_ctx))
 
         # In chain mode we create the contexts step by step, but after the
         # base command has been invoked.  Because at that point we do not
@@ -1083,15 +1095,15 @@ class MultiCommand(Command):
         # but nothing else.
         with ctx:
             ctx.invoked_subcommand = args and '*' or None
-            Command.invoke(self, ctx)
+            await Command.invoke(self, ctx)
 
             # Otherwise we make every single context and invoke them in a
             # chain.  In that case the return value to the result processor
             # is the list of all invoked subcommand's results.
             contexts = []
             while args:
-                cmd_name, cmd, args = self.resolve_command(ctx, args)
-                sub_ctx = cmd.make_context(cmd_name, args, parent=ctx,
+                cmd_name, cmd, args = await self.resolve_command(ctx, args)
+                sub_ctx = await cmd.make_context(cmd_name, args, parent=ctx,
                                            allow_extra_args=True,
                                            allow_interspersed_args=False)
                 contexts.append(sub_ctx)
@@ -1100,10 +1112,10 @@ class MultiCommand(Command):
             rv = []
             for sub_ctx in contexts:
                 with sub_ctx:
-                    rv.append(sub_ctx.command.invoke(sub_ctx))
-            return _process_result(rv)
+                    rv.append(await sub_ctx.command.invoke(sub_ctx))
+            return await _process_result(rv)
 
-    def resolve_command(self, ctx, args):
+    async def resolve_command(self, ctx, args):
         cmd_name = make_str(args[0])
         original_cmd_name = cmd_name
 
@@ -1124,7 +1136,7 @@ class MultiCommand(Command):
         # place.
         if cmd is None:
             if split_opt(cmd_name)[0]:
-                self.parse_args(ctx, ctx.args)
+                await self.parse_args(ctx, ctx.args)
             ctx.fail('No such command "%s".' % original_cmd_name)
 
         return cmd_name, cmd, args[1:]
@@ -1402,7 +1414,7 @@ class Parameter(object):
             rv = self.type.split_envvar_value(rv)
         return rv
 
-    def handle_parse_result(self, ctx, opts, args):
+    async def handle_parse_result(self, ctx, opts, args):
         with augment_usage_errors(ctx, param=self):
             value = self.consume_value(ctx, opts)
             try:
@@ -1413,7 +1425,7 @@ class Parameter(object):
                 value = None
             if self.callback is not None:
                 try:
-                    value = invoke_param_callback(
+                    value = await invoke_param_callback(
                         self.callback, ctx, self, value)
                 except Exception:
                     if not ctx.resilient_parsing:

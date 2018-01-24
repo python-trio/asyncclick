@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
 import click
-
+import pytest
+from inspect import iscoroutine
 
 def test_other_command_invoke(runner):
     @click.command()
@@ -19,7 +20,8 @@ def test_other_command_invoke(runner):
     assert result.output == '42\n'
 
 
-def test_other_command_forward(runner):
+@pytest.mark.trio
+async def test_other_command_forward(runner):
     cli = click.Group()
 
     @cli.command()
@@ -30,11 +32,11 @@ def test_other_command_forward(runner):
     @cli.command()
     @click.option('--count', default=1)
     @click.pass_context
-    def dist(ctx, count):
-        ctx.forward(test)
-        ctx.invoke(test, count=42)
+    async def dist(ctx, count):
+        await ctx.forward(test)
+        await ctx.invoke(test, count=42)
 
-    result = runner.invoke(cli, ['dist'])
+    result = await runner.invoke(cli, ['dist'], _sync=True)
     assert not result.exception
     assert result.output == 'Count: 1\nCount: 42\n'
 
@@ -125,7 +127,7 @@ def test_base_command(runner):
             self.parser = parser
             self.callback = callback
 
-        def parse_args(self, ctx, args):
+        async def parse_args(self, ctx, args):
             try:
                 opts, args = parser.parse_args(args)
             except Exception as e:
@@ -139,8 +141,10 @@ def test_base_command(runner):
         def get_help(self, ctx):
             return self.parser.format_help()
 
-        def invoke(self, ctx):
-            ctx.invoke(self.callback, ctx.args, **ctx.params)
+        async def invoke(self, ctx):
+            rv = ctx.invoke(self.callback, ctx.args, **ctx.params)
+            if iscoroutine(rv):
+                await rv
 
     parser = optparse.OptionParser(usage='Usage: foo test [OPTIONS]')
     parser.add_option("-f", "--file", dest="filename",
@@ -217,10 +221,10 @@ def test_other_command_invoke_with_defaults(runner):
 def test_invoked_subcommand(runner):
     @click.group(invoke_without_command=True)
     @click.pass_context
-    def cli(ctx):
+    async def cli(ctx):
         if ctx.invoked_subcommand is None:
             click.echo('no subcommand, use default')
-            ctx.invoke(sync)
+            await ctx.invoke(sync)
         else:
             click.echo('invoke subcommand')
 

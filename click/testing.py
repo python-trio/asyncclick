@@ -242,7 +242,7 @@ class CliRunner(object):
             clickpkg.utils.should_strip_ansi = old_should_strip_ansi
             clickpkg.formatting.FORCED_WIDTH = old_forced_width
 
-    def invoke(self, cli, args=None, input=None, env=None,
+    async def invoke(self, cli, args=None, input=None, env=None,
                catch_exceptions=True, color=False, **extra):
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
@@ -283,7 +283,7 @@ class CliRunner(object):
                 args = shlex.split(args)
 
             try:
-                cli.main(args=args or (),
+                await cli.main(args=args or (),
                          prog_name=self.get_default_prog_name(cli), **extra)
             except SystemExit as e:
                 exc_info = sys.exc_info()
@@ -300,7 +300,7 @@ class CliRunner(object):
                     exit_code = 1
 
             except Exception as e:
-                if not catch_exceptions:
+                if not catch_exceptions: 
                     raise
                 exception = e
                 exit_code = 1

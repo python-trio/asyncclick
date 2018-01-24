@@ -255,7 +255,7 @@ class OptionParser(object):
             obj = dest
         self._args.append(Argument(dest=dest, nargs=nargs, obj=obj))
 
-    def parse_args(self, args):
+    async def parse_args(self, args):
         """Parses positional arguments and returns ``(values, args, order)``
         for the parsed options and arguments as well as the leftover
         arguments if there are any.  The order is a list of objects as they
