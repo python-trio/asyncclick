@@ -1,4 +1,13 @@
-$ click_
+$ trio-click_
+
+  Trio-Click is the Trio-compatible version of Click. Several core methods
+  are now asynchronous. To use:
+
+  - replace click with trio_click
+  - use "async def cli(…)" wherever you want to use Trio
+  - relax -- everything else works as before.
+
+  ==========================================================================
 
   Click is a Python package for creating beautiful command line interfaces
   in a composable way with as little code as necessary.  It's the "Command
