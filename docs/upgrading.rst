@@ -6,6 +6,23 @@ this is not entirely possible.  In case we need to break backwards
 compatibility this document gives you information about how to upgrade or
 handle backwards compatibility properly.
 
+.. _upgrade-to-trio:
+
+Upgrading to trio-click
+-----------------------
+
+The trio-compatible version of Click is mostly backwards compatible.
+
+Several methods, most notably :meth:`BaseCommand.main` and
+:meth:`Context.invoke`, are now asynchronous.
+The :meth:`BaseCommand.__call__` alias invokes the main entry point via
+`trio.run`. If you already have an async main program, use ``await
+cmd.main()`` instead of ``cmd()``.
+
+Commands and callbacks may be asynchronous; Click auto-``await``s them.
+
+Support for Python 2.x was dropped.
+
 .. _upgrade-to-3.2:
 
 Upgrading to 3.2

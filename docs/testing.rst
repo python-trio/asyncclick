@@ -19,6 +19,10 @@ The basic functionality for testing Click applications is the
 :meth:`CliRunner.invoke` method runs the command line script in isolation
 and captures the output as both bytes and binary data.
 
+Note that :meth:`CliRunner.invoke` is asynchronous. The :func:`runner`
+fixture, which most Click tests use, contains a synchronous :attr:`invoke`
+for your convenience.
+
 The return value is a :class:`Result` object, which has the captured output
 data, exit code, and optional exception attached.
 
@@ -27,13 +31,29 @@ Example::
     import click
     from click.testing import CliRunner
 
-    def test_hello_world():
+    @pytest.mark.trio
+    async def test_hello_world():
         @click.command()
         @click.argument('name')
         def hello(name):
             click.echo('Hello %s!' % name)
 
         runner = CliRunner()
+        result = await runner.invoke(hello, ['Peter'])
+        assert result.exit_code == 0
+        assert result.output == 'Hello Peter!\n'
+
+Simplified example::
+
+    import click
+    from click.testing import CliRunner
+
+    def test_hello_world(runner):
+        @click.command()
+        @click.argument('name')
+        def hello(name):
+            click.echo('Hello %s!' % name)
+
         result = runner.invoke(hello, ['Peter'])
         assert result.exit_code == 0
         assert result.output == 'Hello Peter!\n'
@@ -45,7 +65,7 @@ Example::
     import click
     from click.testing import CliRunner
     
-    def test_sync():
+    def test_sync(runner):
         @click.group()
         @click.option('--debug/--no-debug', default=False)
         def cli(debug):
@@ -55,7 +75,6 @@ Example::
         def sync():
             click.echo('Syncing')
     
-        runner = CliRunner()
         result = runner.invoke(cli, ['--debug', 'sync'])
         assert result.exit_code == 0
         assert 'Debug mode is on' in result.output
@@ -73,13 +92,12 @@ Example::
     import click
     from click.testing import CliRunner
 
-    def test_cat():
+    def test_cat(runner):
         @click.command()
         @click.argument('f', type=click.File())
         def cat(f):
             click.echo(f.read())
 
-        runner = CliRunner()
         with runner.isolated_filesystem():
             with open('hello.txt', 'w') as f:
                 f.write('Hello World!')
@@ -97,13 +115,12 @@ stream (stdin).  This is very useful for testing prompts, for instance::
     import click
     from click.testing import CliRunner
 
-    def test_prompts():
+    def test_prompts(runner):
         @click.command()
         @click.option('--foo', prompt=True)
         def test(foo):
             click.echo('foo=%s' % foo)
 
-        runner = CliRunner()
         result = runner.invoke(test, input='wau wau\n')
         assert not result.exception
         assert result.output == 'Foo: wau wau\nfoo=wau wau\n'

@@ -160,6 +160,8 @@ whereas :func:`Context.forward` fills in the arguments from the current
 command.  Both accept the command as the first argument and everything else
 is passed onwards as you would expect.
 
+These methods are asynchrous.
+
 Example:
 
 .. click:example::
@@ -175,8 +177,8 @@ Example:
     @click.option('--count', default=1)
     @click.pass_context
     def dist(ctx, count):
-        ctx.forward(test)
-        ctx.invoke(test, count=42)
+        await ctx.forward(test)
+        await ctx.invoke(test, count=42)
 
 And what it looks like:
 
