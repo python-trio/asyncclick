@@ -6,7 +6,6 @@ import codecs
 from weakref import WeakKeyDictionary
 
 
-PY2 = sys.version_info[0] == 2
 WIN = sys.platform.startswith('win')
 CYGWIN = sys.platform.startswith('cygwin')
 DEFAULT_COLUMNS = 80
@@ -53,20 +52,6 @@ class _NonClosingTextIOWrapper(io.TextIOWrapper):
     # The io module is a place where the Python 3 text behavior
     # was forced upon Python 2, so we need to unbreak
     # it to look like Python 2.
-    if PY2:
-        def write(self, x):
-            if isinstance(x, str) or is_bytes(x):
-                try:
-                    self.flush()
-                except Exception:
-                    pass
-                return self.buffer.write(str(x))
-            return io.TextIOWrapper.write(self, x)
-
-        def writelines(self, lines):
-            for line in lines:
-                self.write(line)
-
     def __del__(self):
         try:
             self.detach()
@@ -97,8 +82,6 @@ class _FixupStream(object):
         # We only dispatch to readline instead of read in Python 2 as we
         # do not want cause problems with the different implementation
         # of line buffering.
-        if PY2:
-            return self._stream.readline(size)
         return self._stream.read(size)
 
     def readable(self):
@@ -135,87 +118,7 @@ class _FixupStream(object):
         return True
 
 
-if PY2:
-    text_type = unicode
-    bytes = str
-    raw_input = raw_input
-    string_types = (str, unicode)
-    int_types = (int, long)
-    iteritems = lambda x: x.iteritems()
-    range_type = xrange
-
-    def is_bytes(x):
-        return isinstance(x, (buffer, bytearray))
-
-    _identifier_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-
-    # For Windows, we need to force stdout/stdin/stderr to binary if it's
-    # fetched for that.  This obviously is not the most correct way to do
-    # it as it changes global state.  Unfortunately, there does not seem to
-    # be a clear better way to do it as just reopening the file in binary
-    # mode does not change anything.
-    #
-    # An option would be to do what Python 3 does and to open the file as
-    # binary only, patch it back to the system, and then use a wrapper
-    # stream that converts newlines.  It's not quite clear what's the
-    # correct option here.
-    #
-    # This code also lives in _winconsole for the fallback to the console
-    # emulation stream.
-    #
-    # There are also Windows environments where the `msvcrt` module is not
-    # available (which is why we use try-catch instead of the WIN variable
-    # here), such as the Google App Engine development server on Windows. In
-    # those cases there is just nothing we can do.
-    try:
-        import msvcrt
-    except ImportError:
-        set_binary_mode = lambda x: x
-    else:
-        def set_binary_mode(f):
-            try:
-                fileno = f.fileno()
-            except Exception:
-                pass
-            else:
-                msvcrt.setmode(fileno, os.O_BINARY)
-            return f
-
-    def isidentifier(x):
-        return _identifier_re.search(x) is not None
-
-    def get_binary_stdin():
-        return set_binary_mode(sys.stdin)
-
-    def get_binary_stdout():
-        return set_binary_mode(sys.stdout)
-
-    def get_binary_stderr():
-        return set_binary_mode(sys.stderr)
-
-    def get_text_stdin(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stdin, encoding, errors)
-        if rv is not None:
-            return rv
-        return _make_text_stream(sys.stdin, encoding, errors)
-
-    def get_text_stdout(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stdout, encoding, errors)
-        if rv is not None:
-            return rv
-        return _make_text_stream(sys.stdout, encoding, errors)
-
-    def get_text_stderr(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stderr, encoding, errors)
-        if rv is not None:
-            return rv
-        return _make_text_stream(sys.stderr, encoding, errors)
-
-    def filename_to_ui(value):
-        if isinstance(value, bytes):
-            value = value.decode(get_filesystem_encoding(), 'replace')
-        return value
-else:
+if True: # !py2 # kept indented for easier mergeability
     import io
     text_type = str
     raw_input = input
@@ -541,15 +444,6 @@ if WIN:
     def _get_argv_encoding():
         import locale
         return locale.getpreferredencoding()
-
-    if PY2:
-        def raw_input(prompt=''):
-            sys.stderr.flush()
-            if prompt:
-                stdout = _default_text_stdout()
-                stdout.write(prompt)
-            stdin = _default_text_stdin()
-            return stdin.readline().rstrip('\r\n')
 
     try:
         import colorama

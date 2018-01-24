@@ -6,7 +6,7 @@ import pytest
 import click
 import click.utils
 import click._termui_impl
-from click._compat import WIN, PY2
+from click._compat import WIN
 
 
 def test_echo(runner):
@@ -263,7 +263,7 @@ def test_open_file(runner):
         assert result.output == 'foobar\nmeep\n'
 
 
-@pytest.mark.xfail(WIN and not PY2, reason='God knows ...')
+@pytest.mark.xfail(WIN, reason='God knows ...')
 def test_iter_keepopenfile(tmpdir):
     expected = list(map(str, range(10)))
     p = tmpdir.mkdir('testdir').join('testfile')
@@ -273,7 +273,7 @@ def test_iter_keepopenfile(tmpdir):
         assert e_line == a_line.strip()
 
 
-@pytest.mark.xfail(WIN and not PY2, reason='God knows ...')
+@pytest.mark.xfail(WIN, reason='God knows ...')
 def test_iter_lazyfile(tmpdir):
     expected = list(map(str, range(10)))
     p = tmpdir.mkdir('testdir').join('testfile')

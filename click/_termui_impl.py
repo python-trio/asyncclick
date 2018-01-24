@@ -13,7 +13,7 @@ import os
 import sys
 import time
 import math
-from ._compat import _default_text_stdout, range_type, PY2, isatty, \
+from ._compat import _default_text_stdout, range_type, isatty, \
      open_stream, strip_ansi, term_len, get_best_encoding, WIN, int_types, \
      CYGWIN
 from .utils import echo
@@ -253,7 +253,7 @@ class ProgressBar(object):
         self.current_item = None
         self.finished = True
 
-    def next(self):
+    def __next__(self):
         if self.is_hidden:
             return next(self.iter)
         try:
@@ -266,10 +266,6 @@ class ProgressBar(object):
         else:
             self.update(1)
             return rv
-
-    if not PY2:
-        __next__ = next
-        del next
 
 
 def pager(text, color=None):
@@ -520,12 +516,6 @@ if WIN:
         if echo:
             msvcrt.putchar(rv)
         _translate_ch_to_exc(rv)
-        if PY2:
-            enc = getattr(sys.stdin, 'encoding', None)
-            if enc is not None:
-                rv = rv.decode(enc, 'replace')
-            else:
-                rv = rv.decode('cp1252', 'replace')
         return rv
 else:
     import tty

@@ -15,7 +15,7 @@ import zlib
 import time
 import ctypes
 import msvcrt
-from click._compat import _NonClosingTextIOWrapper, text_type, PY2
+from click._compat import _NonClosingTextIOWrapper, text_type
 from ctypes import byref, POINTER, c_int, c_char, c_char_p, \
      c_void_p, py_object, c_ssize_t, c_ulong, windll, WINFUNCTYPE
 try:
@@ -75,9 +75,6 @@ class Py_buffer(ctypes.Structure):
         ('suboffsets', c_ssize_p),
         ('internal', c_void_p)
     ]
-
-    if PY2:
-        _fields_.insert(-1, ('smalltable', c_ssize_t * 2))
 
 
 # On PyPy we cannot get buffers so our ability to operate here is
@@ -222,30 +219,6 @@ def _get_text_stderr(buffer_stream):
     return ConsoleStream(text_stream, buffer_stream)
 
 
-if PY2:
-    def _hash_py_argv():
-        return zlib.crc32('\x00'.join(sys.argv[1:]))
-
-    _initial_argv_hash = _hash_py_argv()
-
-    def _get_windows_argv():
-        argc = c_int(0)
-        argv_unicode = CommandLineToArgvW(GetCommandLineW(), byref(argc))
-        argv = [argv_unicode[i] for i in range(0, argc.value)]
-
-        if not hasattr(sys, 'frozen'):
-            argv = argv[1:]
-            while len(argv) > 0:
-                arg = argv[0]
-                if not arg.startswith('-') or arg == '-':
-                    break
-                argv = argv[1:]
-                if arg.startswith(('-c', '-m')):
-                    break
-
-        return argv[1:]
-
-
 _stream_factories = {
     0: _get_text_stdin,
     1: _get_text_stdout,
@@ -260,14 +233,7 @@ def _get_windows_console_stream(f, encoding, errors):
        hasattr(f, 'isatty') and f.isatty():
         func = _stream_factories.get(f.fileno())
         if func is not None:
-            if not PY2:
-                f = getattr(f, 'buffer', None)
-                if f is None:
-                    return None
-            else:
-                # If we are on Python 2 we need to set the stream that we
-                # deal with to binary mode as otherwise the exercise if a
-                # bit moot.  The same problems apply as for
-                # get_binary_stdin and friends from _compat.
-                msvcrt.setmode(f.fileno(), os.O_BINARY)
+            f = getattr(f, 'buffer', None)
+            if f is None:
+                return None
             return func(f)

@@ -2,7 +2,7 @@ import os
 import stat
 
 from ._compat import open_stream, text_type, filename_to_ui, \
-    get_filesystem_encoding, get_streerror, _get_argv_encoding, PY2
+    get_filesystem_encoding, get_streerror, _get_argv_encoding
 from .exceptions import BadParameter
 from .utils import safecall, LazyFile
 
@@ -290,8 +290,6 @@ class UUIDParameterType(ParamType):
     def convert(self, value, param, ctx):
         import uuid
         try:
-            if PY2 and isinstance(value, text_type):
-                value = value.encode('ascii')
             return uuid.UUID(value)
         except (UnicodeError, ValueError):
             self.fail('%s is not a valid UUID value' % value, param, ctx)

@@ -1,4 +1,4 @@
-from ._compat import PY2, filename_to_ui, get_text_stderr
+from ._compat import filename_to_ui, get_text_stderr
 from .utils import echo
 
 
@@ -10,9 +10,6 @@ class ClickException(Exception):
 
     def __init__(self, message):
         ctor_msg = message
-        if PY2:
-            if ctor_msg is not None:
-                ctor_msg = ctor_msg.encode('utf-8')
         Exception.__init__(self, ctor_msg)
         self.message = message
 
@@ -21,12 +18,6 @@ class ClickException(Exception):
 
     def __str__(self):
         return self.message
-
-    if PY2:
-        __unicode__ = __str__
-
-        def __str__(self):
-            return self.message.encode('utf-8')
 
     def show(self, file=None):
         if file is None:

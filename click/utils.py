@@ -4,15 +4,11 @@ import sys
 from .globals import resolve_color_default
 
 from ._compat import text_type, open_stream, get_filesystem_encoding, \
-    get_streerror, string_types, PY2, binary_streams, text_streams, \
+    get_streerror, string_types, binary_streams, text_streams, \
     filename_to_ui, auto_wrap_for_ansi, strip_ansi, should_strip_ansi, \
     _default_text_stdout, _default_text_stderr, is_bytes, WIN
 
-if not PY2:
-    from ._compat import _find_binary_writer
-elif WIN:
-    from ._winconsole import _get_windows_argv, \
-         _hash_py_argv, _initial_argv_hash
+from ._compat import _find_binary_writer
 
 
 echo_native_types = string_types + (bytes, bytearray)
@@ -233,7 +229,7 @@ def echo(message=None, file=None, nl=True, err=False, color=None):
     # message in there.  This is done separately so that most stream
     # types will work as you would expect.  Eg: you can write to StringIO
     # for other cases.
-    if message and not PY2 and is_bytes(message):
+    if message and is_bytes(message):
         binary_file = _find_binary_writer(file)
         if binary_file is not None:
             file.flush()
@@ -343,8 +339,6 @@ def get_os_args():
     """
     # We can only extract the unicode argv if sys.argv has not been
     # changed since the startup of the application.
-    if PY2 and WIN and _initial_argv_hash == _hash_py_argv():
-        return _get_windows_argv()
     return sys.argv[1:]
 
 

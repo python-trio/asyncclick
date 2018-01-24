@@ -14,8 +14,8 @@ from .formatting import HelpFormatter, join_options
 from .parser import OptionParser, split_opt
 from .globals import push_context, pop_context
 
-from ._compat import PY2, isidentifier, iteritems
-from ._unicodefun import _check_for_unicode_literals, _verify_python3_env
+from ._compat import isidentifier, iteritems
+from ._unicodefun import _verify_python3_env
 
 
 _missing = object()
@@ -681,10 +681,7 @@ class BaseCommand(object):
         # If we are in Python 3, we will verify that the environment is
         # sane at this point or reject further execution to avoid a
         # broken script.
-        if not PY2:
-            _verify_python3_env()
-        else:
-            _check_for_unicode_literals()
+        _verify_python3_env()
 
         if args is None:
             args = get_os_args()

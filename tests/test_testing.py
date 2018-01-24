@@ -6,13 +6,10 @@ import click
 
 from click.testing import CliRunner
 
-from click._compat import PY2, WIN
+from click._compat import WIN
 
 # Use the most reasonable io that users would use for the python version.
-if PY2:
-    from cStringIO import StringIO as ReasonableBytesIO
-else:
-    from io import BytesIO as ReasonableBytesIO
+from io import BytesIO as ReasonableBytesIO
 
 
 def test_runner():

@@ -2,8 +2,6 @@ import os
 import sys
 import codecs
 
-from ._compat import PY2
-
 
 # If someone wants to vendor click, we want to ensure the
 # correct package is discovered.  Ideally we could use a
@@ -29,28 +27,8 @@ def _find_unicode_literals_frame():
     return 0
 
 
-def _check_for_unicode_literals():
-    if not __debug__:
-        return
-    if not PY2 or click.disable_unicode_literals_warning:
-        return
-    bad_frame = _find_unicode_literals_frame()
-    if bad_frame <= 0:
-        return
-    from warnings import warn
-    warn(Warning('Click detected the use of the unicode_literals '
-                 '__future__ import.  This is heavily discouraged '
-                 'because it can introduce subtle bugs in your '
-                 'code.  You should instead use explicit u"" literals '
-                 'for your unicode strings.  For more information see '
-                 'http://click.pocoo.org/python3/'),
-         stacklevel=bad_frame)
-
-
 def _verify_python3_env():
     """Ensures that the environment is good for unicode on Python 3."""
-    if PY2:
-        return
     try:
         import locale
         fs_enc = codecs.lookup(locale.getpreferredencoding()).name

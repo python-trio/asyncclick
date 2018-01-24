@@ -5,7 +5,7 @@ import tempfile
 import contextlib
 import shlex
 
-from ._compat import iteritems, PY2, string_types
+from ._compat import iteritems, string_types
 
 
 # If someone wants to vendor click, we want to ensure the
@@ -15,11 +15,8 @@ from ._compat import iteritems, PY2, string_types
 clickpkg = sys.modules[__name__.rsplit('.', 1)[0]]
 
 
-if PY2:
-    from cStringIO import StringIO
-else:
-    import io
-    from ._compat import _find_binary_reader
+import io
+from ._compat import _find_binary_reader
 
 
 class EchoingStdin(object):
@@ -54,8 +51,6 @@ class EchoingStdin(object):
 def make_input_stream(input, charset):
     # Is already an input stream.
     if hasattr(input, 'read'):
-        if PY2:
-            return input
         rv = _find_binary_reader(input)
         if rv is not None:
             return rv
@@ -65,8 +60,6 @@ def make_input_stream(input, charset):
         input = b''
     elif not isinstance(input, bytes):
         input = input.encode(charset)
-    if PY2:
-        return StringIO(input)
     return io.BytesIO(input)
 
 
@@ -163,11 +156,7 @@ class CliRunner(object):
 
         env = self.make_env(env)
 
-        if PY2:
-            sys.stdout = sys.stderr = bytes_output = StringIO()
-            if self.echo_stdin:
-                input = EchoingStdin(input, bytes_output)
-        else:
+        if True: # !PY2 # indent kept for good mergeability
             bytes_output = io.BytesIO()
             if self.echo_stdin:
                 input = EchoingStdin(input, bytes_output)
