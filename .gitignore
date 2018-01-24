@@ -11,3 +11,4 @@ click.egg-info
 .cache
 .ropeproject
 .idea
+/.pybuild/

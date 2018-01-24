@@ -1,0 +1,5 @@
+trio-click (7.0~dev0-1) smurf; urgency=low
+
+  * source package automatically created by stdeb 0.8.5
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 24 Jan 2018 22:45:37 +0100
