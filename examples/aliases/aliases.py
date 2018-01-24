@@ -1,5 +1,5 @@
 import os
-import click
+import trio_click as click
 
 try:
     import ConfigParser as configparser

@@ -1,4 +1,4 @@
-from click.testing import CliRunner
+from trio_click.testing import CliRunner
 
 import pytest
 import trio

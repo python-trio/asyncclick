@@ -1,4 +1,4 @@
-import click
+import trio_click as click
 
 
 all_colors = 'black', 'red', 'green', 'yellow', 'blue', 'magenta', \

@@ -15,7 +15,7 @@ import zlib
 import time
 import ctypes
 import msvcrt
-from click._compat import _NonClosingTextIOWrapper, text_type
+from trio_click._compat import _NonClosingTextIOWrapper, text_type
 from ctypes import byref, POINTER, c_int, c_char, c_char_p, \
      c_void_p, py_object, c_ssize_t, c_ulong, windll, WINFUNCTYPE
 try:

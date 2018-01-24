@@ -188,7 +188,7 @@ A custom multi command just needs to implement a list and load method:
 
 .. click:example::
 
-    import click
+    import trio_click as click
     import os
 
     plugin_folder = os.path.join(os.path.dirname(__file__), 'commands')
@@ -241,7 +241,7 @@ Example usage:
 
 .. click:example::
 
-    import click
+    import trio_click as click
 
     @click.group()
     def cli1():
@@ -444,7 +444,7 @@ Example usage:
 
 .. click:example::
 
-    import click
+    import trio_click as click
 
     @click.group()
     def cli():
@@ -486,7 +486,7 @@ This example does the same as the previous example:
 
 .. click:example::
 
-    import click
+    import trio_click as click
 
     CONTEXT_SETTINGS = dict(
         default_map={'runserver': {'port': 5000}}

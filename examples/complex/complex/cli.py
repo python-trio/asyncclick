@@ -1,6 +1,6 @@
 import os
 import sys
-import click
+import trio_click as click
 
 
 CONTEXT_SETTINGS = dict(auto_envvar_prefix='COMPLEX')

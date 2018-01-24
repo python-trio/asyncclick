@@ -2,7 +2,7 @@ import os
 import sys
 import posixpath
 
-import click
+import trio_click as click
 
 
 class Repo(object):

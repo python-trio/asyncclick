@@ -28,8 +28,8 @@ data, exit code, and optional exception attached.
 
 Example::
 
-    import click
-    from click.testing import CliRunner
+    import trio_click as click
+    from trio_click.testing import CliRunner
 
     @pytest.mark.trio
     async def test_hello_world():
@@ -45,8 +45,8 @@ Example::
 
 Simplified example::
 
-    import click
-    from click.testing import CliRunner
+    import trio_click as click
+    from trio_click.testing import CliRunner
 
     def test_hello_world(runner):
         @click.command()
@@ -62,8 +62,8 @@ For subcommand testing, a subcommand name must be specified in the `args` parame
 
 Example::
 
-    import click
-    from click.testing import CliRunner
+    import trio_click as click
+    from trio_click.testing import CliRunner
     
     def test_sync(runner):
         @click.group()
@@ -89,8 +89,8 @@ an empty folder and changes the current working directory to.
 
 Example::
 
-    import click
-    from click.testing import CliRunner
+    import trio_click as click
+    from trio_click.testing import CliRunner
 
     def test_cat(runner):
         @click.command()
@@ -112,8 +112,8 @@ Input Streams
 The test wrapper can also be used to provide input data for the input
 stream (stdin).  This is very useful for testing prompts, for instance::
 
-    import click
-    from click.testing import CliRunner
+    import trio_click as click
+    from trio_click.testing import CliRunner
 
     def test_prompts(runner):
         @click.command()

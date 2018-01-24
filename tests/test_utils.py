@@ -3,10 +3,10 @@ import sys
 
 import pytest
 
-import click
-import click.utils
-import click._termui_impl
-from click._compat import WIN
+import trio_click as click
+import trio_click.utils
+import trio_click._termui_impl
+from trio_click._compat import WIN
 
 
 def test_echo(runner):
@@ -135,7 +135,7 @@ def test_prompts_abort(monkeypatch, capsys):
     def f(_):
         raise KeyboardInterrupt()
 
-    monkeypatch.setattr('click.termui.hidden_prompt_func', f)
+    monkeypatch.setattr('trio_click.termui.hidden_prompt_func', f)
 
     try:
         click.prompt('Password', hide_input=True)

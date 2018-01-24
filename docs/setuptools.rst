@@ -52,7 +52,7 @@ Contents of ``yourscript.py``:
 
 .. click:example::
 
-    import click
+    import trio_click as click
 
     @click.command()
     def cli():

@@ -1,4 +1,4 @@
-import click
+import trio_click as click
 try:
     from urllib import parser as urlparse
 except ImportError:

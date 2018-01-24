@@ -1,6 +1,6 @@
 import os
 import sys
-import click
+import trio_click as click
 import shutil
 import tempfile
 import contextlib

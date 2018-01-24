@@ -1,5 +1,5 @@
 import sys
-import click
+import trio_click as click
 import pytest
 
 

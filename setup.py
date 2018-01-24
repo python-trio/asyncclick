@@ -1,5 +1,6 @@
 import re
 import ast
+import os
 from setuptools import setup
 
 
@@ -10,14 +11,16 @@ with open('click/__init__.py', 'rb') as f:
     version = str(ast.literal_eval(_version_re.search(
         f.read().decode('utf-8')).group(1)))
 
+if os.path.isdir("click") and not os.path.exists("trio_click"):
+    os.symlink("click","trio_click")
 
 setup(
-    name='click',
+    name='trio-click',
     author='Armin Ronacher',
     author_email='armin.ronacher@active-4.com',
     version=version,
     url='http://github.com/pallets/click',
-    packages=['click'],
+    packages=['trio_click'],
     description='A simple wrapper around optparse for '
                 'powerful command line utilities.',
     classifiers=[

@@ -1,4 +1,4 @@
-import click
+import trio_click as click
 
 
 def test_progressbar_strip_regression(runner, monkeypatch):

@@ -96,7 +96,7 @@ to upgrade.
 In case you want to support both Click 1.0 and Click 2.0, you can make a
 simple decorator that adjusts the signatures::
 
-    import click
+    import trio_click as click
     from functools import update_wrapper
 
     def compatcallback(f):

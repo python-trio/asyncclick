@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import click
-from click._bashcomplete import get_choices
+import trio_click as click
+from trio_click._bashcomplete import get_choices
 
 
 def test_single_command():

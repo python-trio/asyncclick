@@ -20,7 +20,7 @@ What does it look like?  Here is an example of a simple Click program:
 
 .. click:example::
 
-    import click
+    import trio_click as click
 
     @click.command()
     @click.option('--count', default=1, help='Number of greetings.')

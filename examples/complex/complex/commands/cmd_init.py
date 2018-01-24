@@ -1,4 +1,4 @@
-import click
+import trio_click as click
 from complex.cli import pass_context
 
 
