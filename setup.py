@@ -16,12 +16,16 @@ if os.path.isdir("click") and not os.path.exists("trio_click"):
 
 setup(
     name='trio-click',
-    author='Armin Ronacher',
-    author_email='armin.ronacher@active-4.com',
+    author='Matthias Urlichs',
+    author_email='matthias@urlichs.de',
+# I don't really want to replace Armin as the author here,
+# but uploading to pypi kindof requires it.
+#   author='Armin Ronacher',
+#   author_email='armin.ronacher@active-4.com',
     version=version,
-    url='http://github.com/pallets/click',
+    url='http://github.com/python-trio/trio-click',
     packages=['trio_click'],
-    description='A simple wrapper around optparse for '
+    description='A simple trio-compatible wrapper around optparse for '
                 'powerful command line utilities.',
     classifiers=[
         'License :: OSI Approved :: BSD License',
