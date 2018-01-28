@@ -1,3 +1,9 @@
+trio-click (7.0+trio-dev1-1) unstable; urgency=medium
+
+  * Updated version number to something trackable
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sun, 28 Jan 2018 09:59:28 +0100
+
 trio-click (7.0~dev0-1) smurf; urgency=low
 
   * source package automatically created by stdeb 0.8.5
