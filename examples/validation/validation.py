@@ -1,6 +1,6 @@
 import trio_click as click
 try:
-    from urllib import parser as urlparse
+    from urllib import parse as urlparse
 except ImportError:
     import urlparse
 
