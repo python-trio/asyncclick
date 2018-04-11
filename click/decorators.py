@@ -83,7 +83,7 @@ def _make_command(f, name, attrs, cls):
     else:
         help = inspect.cleandoc(help)
     attrs['help'] = help
-    return cls(name=name or f.__name__.lower(),
+    return cls(name=name or f.__name__.lower().replace('_', '-'),
                callback=f, params=params, **attrs)
 
 
@@ -103,7 +103,7 @@ def command(name=None, cls=None, **attrs):
     command :class:`Group`.
 
     :param name: the name of the command.  This defaults to the function
-                 name.
+                 name with underscores replaced by dashes.
     :param cls: the command class to instantiate.  This defaults to
                 :class:`Command`.
     """
