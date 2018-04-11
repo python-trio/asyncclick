@@ -1,5 +1,21 @@
 $ trio-click_
 
+.. image:: https://img.shields.io/badge/chat-join%20now-blue.svg
+   :target: https://gitter.im/python-trio/general
+   :alt: Join chatroom
+
+.. image:: https://img.shields.io/badge/docs-read%20now-blue.svg
+   :target: https://trio-click.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
+
+.. image:: https://travis-ci.org/python-trio/trio-click.svg?branch=master
+   :target: https://travis-ci.org/python-trio/trio-click
+   :alt: Automated test status
+
+.. image:: https://codecov.io/gh/python-trio/trio-click/branch/master/graph/badge.svg
+   :target: https://codecov.io/gh/python-trio/trio-click
+   :alt: Test coverage
+
   Trio-Click is the Trio-compatible version of Click. Several core methods
   are now asynchronous. To use:
 
