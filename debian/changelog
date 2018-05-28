@@ -1,3 +1,9 @@
+trio-click (1:7.0~dev3-1) unstable; urgency=medium
+
+  * Merge to current Upstream.
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Mon, 28 May 2018 03:38:15 +0200
+
 trio-click (7.0+trio-dev2-1) unstable; urgency=medium
 
   * Merge to current Upstream.
