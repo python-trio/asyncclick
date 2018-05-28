@@ -210,7 +210,8 @@ async def test_env():
     assert os.environ == env_orig
 
 
-def test_stderr():
+@pytest.mark.trio
+async def test_stderr():
     @click.command()
     def cli_stderr():
         click.echo("stdout")
@@ -218,7 +219,7 @@ def test_stderr():
 
     runner = CliRunner(mix_stderr=False)
 
-    result = runner.invoke(cli_stderr)
+    result = await runner.invoke(cli_stderr)
 
     assert result.output == 'stdout\n'
     assert result.stdout == 'stdout\n'
@@ -255,12 +256,13 @@ async def test_args(args, expected_output):
     assert result.output == expected_output
 
 
-def test_setting_prog_name_in_extra():
+@pytest.mark.trio
+async def test_setting_prog_name_in_extra():
     @click.command()
     def cli():
         click.echo("ok")
 
     runner = CliRunner()
-    result = runner.invoke(cli, prog_name="foobar")
+    result = await runner.invoke(cli, prog_name="foobar")
     assert not result.exception
     assert result.output == 'ok\n'
