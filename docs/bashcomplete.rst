@@ -12,9 +12,8 @@ Limitations
 
 Bash completion is only available if a script has been installed properly,
 and not executed through the ``python`` command.  For information about
-how to do that, see :ref:`setuptools-integration`.  Also, Click currently
-only supports completion for Bash. Zsh support is available through Zsh's
-bash completion compatibility mode.
+how to do that, see :ref:`setuptools-integration`.  Click currently
+only supports completion for Bash and Zsh.
 
 What it Completes
 -----------------
@@ -47,13 +46,40 @@ Here is an example of using a callback function to generate dynamic suggestions:
     import os
 
     def get_env_vars(ctx, args, incomplete):
-        return os.environ.keys()
+        return [k for k in os.environ.keys() if incomplete in k]
 
     @click.command()
     @click.argument("envvar", type=click.STRING, autocompletion=get_env_vars)
     def cmd1(envvar):
         click.echo('Environment variable: %s' % envvar)
         click.echo('Value: %s' % os.environ[envvar])
+
+
+Completion help strings (ZSH only)
+----------------------------------
+
+ZSH supports showing documentation strings for completions. These are taken
+from the help parameters of options and subcommands. For dynamically generated
+completions a help string can be provided by returning a tuple instead of a
+string. The first element of the tuple is the completion and the second is the
+help string to display.
+
+Here is an example of using a callback function to generate dynamic suggestions with help strings:
+
+.. click:example::
+
+    import os
+
+    def get_colors(ctx, args, incomplete):
+        colors = [('red', 'help string for the color red'),
+                  ('blue', 'help string for the color blue'),
+                  ('green', 'help string for the color green')]
+        return [c for c in colors if incomplete in c[0]]
+
+    @click.command()
+    @click.argument("color", type=click.STRING, autocompletion=get_colors)
+    def cmd1(color):
+        click.echo('Chosen color is %s' % color)
 
 
 Activation
@@ -75,7 +101,11 @@ is what you would need to put into your ``.bashrc``::
 
     eval "$(_FOO_BAR_COMPLETE=source foo-bar)"
 
-From this point onwards, your script will have Bash completion enabled.
+For zsh users add this to your ``.zshrc``::
+
+    eval "$(_FOO_BAR_COMPLETE=source_zsh foo-bar)"
+
+From this point onwards, your script will have autocompletion enabled.
 
 Activation Script
 -----------------
@@ -90,17 +120,12 @@ This can be easily accomplished::
 
     _FOO_BAR_COMPLETE=source foo-bar > foo-bar-complete.sh
 
-And then you would put this into your bashrc instead::
+For zsh:
+
+    _FOO_BAR_COMPLETE=source_zsh foo-bar > foo-bar-complete.sh
+
+And then you would put this into your .bashrc or .zshrc instead::
 
     . /path/to/foo-bar-complete.sh
 
-Zsh Compatibility
-----------------
 
-To enable Bash completion in Zsh, add the following lines to your .zshrc:
-
-    autoload bashcompinit
-    bashcompinit
-
-See https://github.com/pallets/click/issues/323 for more information on
-this issue.

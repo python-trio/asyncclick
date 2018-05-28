@@ -10,6 +10,28 @@ decorator.  Since options can come in various different versions, there
 are a ton of parameters to configure their behavior. Options in click are
 distinct from :ref:`positional arguments <arguments>`.
 
+Name Your Options
+-----------------
+
+The naming rules can be found in :ref:`parameter_names`. In short, you
+can refer the option **implicitly** by the longest dash-prefixed argument:
+
+.. click:example::
+
+    @click.command()
+    @click.option('-s', '--string-to-echo')
+    def echo(string_to_echo):
+        click.echo(string_to_echo)
+
+Or, **explicitly**, by giving one non-dash-prefixed argument:
+
+.. click:example::
+
+    @click.command()
+    @click.option('-s', '--string-to-echo', 'string')
+    def echo(string):
+        click.echo(string)
+
 Basic Value Options
 -------------------
 
@@ -18,12 +40,21 @@ argument which is a value.  If no type is provided, the type of the default
 value is used.  If no default value is provided, the type is assumed to be
 :data:`STRING`.  Unless a name is explicitly specified, the name of the
 parameter is the first long option defined; otherwise the first short one is
-used.
+used. By default, options are not required, however to make an option required,
+simply pass in `required=True` as an argument to the decorator.
 
 .. click:example::
 
     @click.command()
     @click.option('--n', default=1)
+    def dots(n):
+        click.echo('.' * n)
+
+.. click:example::
+
+    # How to make an option required
+    @click.command()
+    @click.option('--n', required=True, type=int)
     def dots(n):
         click.echo('.' * n)
 
@@ -44,6 +75,19 @@ And on the command line:
 
 In this case the option is of type :data:`INT` because the default value
 is an integer.
+
+To show the default values when showing command help, use ``show_default=True``
+
+.. click:example::
+
+    @click.command()
+    @click.option('--n', default=1, show_default=True)
+    def dots(n):
+        click.echo('.' * n)
+
+.. click:run::
+
+   invoke(dots, args=['--help'])
 
 Multi Value Options
 -------------------
@@ -389,6 +433,21 @@ from the environment:
     def hello(username):
         print("Hello,", username)
 
+To describe what the default value will be, set it in ``show_default``.
+
+.. click:example::
+
+    @click.command()
+    @click.option('--username', prompt=True,
+                  default=lambda: os.environ.get('USER', ''),
+                  show_default='current user')
+    def hello(username):
+        print("Hello,", username)
+
+.. click:run::
+
+   invoke(hello, args=['--help'])
+
 Callbacks and Eager Options
 ---------------------------
 
@@ -528,6 +587,33 @@ And from the command line:
 
     invoke(greet, env={'GREETER_USERNAME': 'john'},
            auto_envvar_prefix='GREETER')
+
+When using ``auto_envvar_prefix`` with command groups, the command name needs
+to be included in the environment variable, between the prefix and the parameter name, *i.e.* *PREFIX_COMMAND_VARIABLE*.
+
+Example:
+
+.. click:example::
+
+   @click.group()
+   @click.option('--debug/--no-debug')
+   def cli(debug):
+       click.echo('Debug mode is %s' % ('on' if debug else 'off'))
+
+   @cli.command()
+   @click.option('--username')
+   def greet(username):
+       click.echo('Hello %s!' % username)
+
+   if __name__ == '__main__':
+       cli(auto_envvar_prefix='GREETER')
+
+.. click:run::
+
+   invoke(cli, args=['greet',],
+          env={'GREETER_GREET_USERNAME': 'John', 'GREETER_DEBUG': 'false'},
+          auto_envvar_prefix='GREETER')
+
 
 The second option is to manually pull values in from specific environment
 variables by defining the name of the environment variable on the option.
