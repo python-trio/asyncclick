@@ -226,7 +226,7 @@ async def test_stderr():
     assert result.stderr == 'stderr\n'
 
     runner_mix = CliRunner(mix_stderr=True)
-    result_mix = runner_mix.invoke(cli_stderr)
+    result_mix = await runner_mix.invoke(cli_stderr)
 
     assert result_mix.output == 'stdout\nstderr\n'
     assert result_mix.stdout == 'stdout\nstderr\n'
