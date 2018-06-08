@@ -1,8 +1,10 @@
-\$ click\_
-==========
+\$ trio-click\_
+==============
 
-What's Click?
--------------
+What's Trio-Click?
+------------------
+
+Trio-Click ist a fork of Click that works well with Trio.
 
 Click is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary.  It's the "Command
@@ -18,7 +20,6 @@ Click in three points:
  -   automatic help page generation
  -   supports lazy loading of subcommands at runtime
 
-
 Installing
 ----------
 
@@ -26,9 +27,9 @@ Install and update using `pip`_:
 
 .. code-block:: text
 
-    $ pip install click
+    $ pip install trio-click
 
-Click supports Python 3.4 and newer, Python 2.7, and PyPy
+Trio-Click supports Python 3.5 and newer, and PyPy3.
 
 A Simple Example
 ----------------
@@ -37,19 +38,25 @@ What does it look like? Here is an example of a simple Click program:
 
 .. code-block:: python
 
-    import click
+    import trio
+    import trio_click as click
     
     @click.command()
     @click.option('--count', default=1, help='Number of greetings.')
     @click.option('--name', prompt='Your name',
                   help='The person to greet.')
-    def hello(count, name):
+    async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
         for x in range(count):
+            if x: await trio.sleep(0.1)
             click.echo('Hello %s!' % name)
     
     if __name__ == '__main__':
         hello()
+
+.. note::
+    Trio-Click automagically starts a Trio event loop and runs your
+    code asynchronously.
 
 And what it looks like when run:
 
@@ -71,6 +78,9 @@ donate today`_.
 
 .. _please donate today: https://psfmember.org/civicrm/contribute/transact?reset=1&id=20
 
+The Trio-Click fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
+It's not a lot of work, so if you'd like to motivate me, donate to the
+charity of your choice and tell me that you've done so. ;-)
 
 Links
 -----

@@ -1,7 +1,9 @@
-Welcome to the Click Documentation
-==================================
+Welcome to the Trio-Click Documentation
+=======================================
 
-Click is a Python package for creating beautiful command line interfaces
+Trio-Click ist a fork of Click that works well with Trio. 
+
+Click, in turn, is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary.  It's the "Command
 Line Interface Creation Kit".  It's highly configurable but comes with
 sensible defaults out of the box.
@@ -26,9 +28,10 @@ What does it look like?  Here is an example of a simple Click program:
     @click.option('--count', default=1, help='Number of greetings.')
     @click.option('--name', prompt='Your name',
                   help='The person to greet.')
-    def hello(count, name):
+    async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
         for x in range(count):
+            if x: await trio.sleep(0.1)
             click.echo('Hello %s!' % name)
 
     if __name__ == '__main__':
@@ -48,7 +51,7 @@ It automatically generates nicely formatted help pages:
 
 You can get the library directly from PyPI::
 
-    pip install click
+    pip install trio-click
 
 Documentation Contents
 ----------------------
