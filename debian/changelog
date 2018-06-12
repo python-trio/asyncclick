@@ -1,3 +1,9 @@
+trio-click (1:7.0~dev5-1) unstable; urgency=medium
+
+  * fix version
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Tue, 12 Jun 2018 05:41:03 +0200
+
 trio-click (1:7.0~dev4-1) unstable; urgency=medium
 
   * Updated README
