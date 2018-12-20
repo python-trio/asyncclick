@@ -524,7 +524,7 @@ def launch(url, wait=False, locate=False):
 
     Examples::
 
-        click.launch('http://click.pocoo.org/')
+        click.launch('https://click.palletsprojects.com/')
         click.launch('/my/downloaded/file', locate=True)
 
     .. versionadded:: 2.0
@@ -556,6 +556,10 @@ def getchar(echo=False):
 
     Note that this will always read from the terminal, even if something
     is piped into the standard input.
+
+    Note for Windows: in rare cases when typing non-ASCII characters, this
+    function might wait for a second character and then return both at once.
+    This is because certain Unicode characters look like special-key markers.
 
     .. versionadded:: 2.0
 

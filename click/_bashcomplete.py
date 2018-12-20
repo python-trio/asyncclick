@@ -1,4 +1,3 @@
-import collections
 import copy
 import os
 import re
@@ -9,8 +8,14 @@ from .parser import split_arg_string
 from .core import MultiCommand, Option, Argument
 from .types import Choice
 
+try:
+    from collections import abc
+except ImportError:
+    import collections as abc
+
 WORDBREAK = '='
 
+# Note, only BASH version 4.4 and later have the nosort option.
 COMPLETION_SCRIPT_BASH = '''
 %(complete_func)s() {
     local IFS=$'\n'
@@ -20,7 +25,18 @@ COMPLETION_SCRIPT_BASH = '''
     return 0
 }
 
-complete -F %(complete_func)s %(script_names)s
+%(complete_func)setup() {
+    local COMPLETION_OPTIONS=""
+    local BASH_VERSION_ARR=(${BASH_VERSION//./ })
+    # Only BASH version 4.4 and later have the nosort option.
+    if [ ${BASH_VERSION_ARR[0]} -gt 4 ] || ([ ${BASH_VERSION_ARR[0]} -eq 4 ] && [ ${BASH_VERSION_ARR[1]} -ge 4 ]); then
+        COMPLETION_OPTIONS="-o nosort"
+    fi
+
+    complete $COMPLETION_OPTIONS -F %(complete_func)s %(script_names)s
+}
+
+%(complete_func)setup
 '''
 
 COMPLETION_SCRIPT_ZSH = '''
@@ -42,11 +58,13 @@ COMPLETION_SCRIPT_ZSH = '''
     done
 
     if [ -n "$completions_with_descriptions" ]; then
-        _describe '' completions_with_descriptions
+        _describe -V unsorted completions_with_descriptions -U -Q
     fi
+
     if [ -n "$completions" ]; then
-        compadd -M 'r:|=* l:|=* r:|=*' -a completions
+        compadd -U -V unsorted -Q -a completions
     fi
+    compstate[insert]="automenu"
 }
 
 compdef %(complete_func)s %(script_names)s
@@ -74,18 +92,31 @@ async def resolve_ctx(cli, prog_name, args):
     :return: the final context/command parsed
     """
     ctx = await cli.make_context(prog_name, args, resilient_parsing=True)
-    args_remaining = ctx.protected_args + ctx.args
-    while ctx is not None and args_remaining:
+    args = ctx.protected_args + ctx.args
+    while args:
         if isinstance(ctx.command, MultiCommand):
-            cmd = ctx.command.get_command(ctx, args_remaining[0])
-            if cmd is None:
-                return None
-            ctx = await cmd.make_context(
-                args_remaining[0], args_remaining[1:], parent=ctx, resilient_parsing=True)
-            args_remaining = ctx.protected_args + ctx.args
+            if not ctx.command.chain:
+                cmd_name, cmd, args = ctx.command.resolve_command(ctx, args)
+                if cmd is None:
+                    return ctx
+                ctx = await cmd.make_context(cmd_name, args, parent=ctx,
+                                       resilient_parsing=True)
+                args = ctx.protected_args + ctx.args
+            else:
+                # Walk chained subcommand contexts saving the last one.
+                while args:
+                    cmd_name, cmd, args = ctx.command.resolve_command(ctx, args)
+                    if cmd is None:
+                        return ctx
+                    sub_ctx = cmd.make_context(cmd_name, args, parent=ctx,
+                                               allow_extra_args=True,
+                                               allow_interspersed_args=False,
+                                               resilient_parsing=True)
+                    args = sub_ctx.args
+                ctx = sub_ctx
+                args = sub_ctx.protected_args + sub_ctx.args
         else:
-            ctx = ctx.parent
-
+            break
     return ctx
 
 
@@ -133,7 +164,7 @@ def is_incomplete_argument(current_params, cmd_param):
         return True
     if cmd_param.nargs == -1:
         return True
-    if isinstance(current_param_values, collections.Iterable) \
+    if isinstance(current_param_values, abc.Iterable) \
             and cmd_param.nargs > 1 and len(current_param_values) < cmd_param.nargs:
         return True
     return False
@@ -151,7 +182,7 @@ def get_user_autocompletions(ctx, args, incomplete, cmd_param):
     if isinstance(cmd_param.type, Choice):
         # Choices don't support descriptions.
         results = [(c, None)
-                   for c in cmd_param.type.choices if c.startswith(incomplete)]
+                   for c in cmd_param.type.choices if str(c).startswith(incomplete)]
     elif cmd_param.autocompletion is not None:
         dynamic_completions = cmd_param.autocompletion(ctx=ctx,
                                                        args=args,
@@ -161,20 +192,32 @@ def get_user_autocompletions(ctx, args, incomplete, cmd_param):
     return results
 
 
+def get_visible_commands_starting_with(ctx, starts_with):
+    """
+    :param ctx: context associated with the parsed command
+    :starts_with: string that visible commands must start with.
+    :return: all visible (not hidden) commands that start with starts_with.
+    """
+    for c in ctx.command.list_commands(ctx):
+        if c.startswith(starts_with):
+            command = ctx.command.get_command(ctx, c)
+            if not command.hidden:
+                yield command
+
+
 def add_subcommand_completions(ctx, incomplete, completions_out):
     # Add subcommand completions.
     if isinstance(ctx.command, MultiCommand):
         completions_out.extend(
-            [(c, ctx.command.get_command(ctx, c).get_short_help_str()) for c in ctx.command.list_commands(ctx) if c.startswith(incomplete)])
+            [(c.name, c.get_short_help_str()) for c in get_visible_commands_starting_with(ctx, incomplete)])
 
     # Walk up the context list and add any other completion possibilities from chained commands
     while ctx.parent is not None:
         ctx = ctx.parent
         if isinstance(ctx.command, MultiCommand) and ctx.command.chain:
-            remaining_commands = sorted(
-                set(ctx.command.list_commands(ctx)) - set(ctx.protected_args))
-            completions_out.extend(
-                [(c, ctx.command.get_command(ctx, c).get_short_help_str()) for c in remaining_commands if c.startswith(incomplete)])
+            remaining_commands = [c for c in get_visible_commands_starting_with(ctx, incomplete)
+                                  if c.name not in ctx.protected_args]
+            completions_out.extend([(c.name, c.get_short_help_str()) for c in remaining_commands])
 
 
 def get_choices(cli, prog_name, args, incomplete):
@@ -204,11 +247,10 @@ def get_choices(cli, prog_name, args, incomplete):
     if start_of_option(incomplete):
         # completions for partial options
         for param in ctx.command.params:
-            if isinstance(param, Option):
+            if isinstance(param, Option) and not param.hidden:
                 param_opts = [param_opt for param_opt in param.opts +
                               param.secondary_opts if param_opt not in all_args or param.multiple]
-                completions.extend(
-                    [(o, param.help) for o in param_opts if o.startswith(incomplete)])
+                completions.extend([(o, param.help) for o in param_opts if o.startswith(incomplete)])
         return completions
     # completion for option values from user supplied values
     for param in ctx.command.params:
@@ -217,15 +259,11 @@ def get_choices(cli, prog_name, args, incomplete):
     # completion for argument values from user supplied values
     for param in ctx.command.params:
         if is_incomplete_argument(ctx.params, param):
-            completions.extend(get_user_autocompletions(
-                ctx, all_args, incomplete, param))
-            # Stop looking for other completions only if this argument is required.
-            if param.required:
-                return completions
-            break
+            return get_user_autocompletions(ctx, all_args, incomplete, param)
 
     add_subcommand_completions(ctx, incomplete, completions)
-    return completions
+    # Sort before returning so that proper ordering can be enforced in custom types.
+    return sorted(completions)
 
 
 def do_complete(cli, prog_name, include_descriptions):

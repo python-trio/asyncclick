@@ -1,23 +1,17 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import io
 import re
 import os
 import ast
 from setuptools import setup
 
-
-_version_re = re.compile(r'__version__\s+=\s+(.*)')
-
-
-with io.open('README.rst', 'rt', encoding='utf8') as f:
+with io.open("README.rst", "rt", encoding="utf8") as f:
     readme = f.read()
 
 if os.path.isdir("click") and not os.path.exists("trio_click"):
     os.symlink("click","trio_click")
 
-with io.open('click/__init__.py', 'rt', encoding='utf8') as f:
-    version = re.search(r'__version__ = \'(.*?)\'', f.read()).group(1)
+with io.open("click/__init__.py", "rt", encoding="utf8") as f:
+    version = re.search(r"__version__ = \'(.*?)\'", f.read()).group(1)
 
 setup(
     name='trio-click',
@@ -46,7 +40,13 @@ setup(
         'docs': [
             'sphinx',
         ]
+    project_urls={
+        "Code": "https://github.com/python-trio/trio-click",
+        "Issue tracker": "https://github.com/python-trio/trio-click/issues",
     },
+    license="BSD",
+    include_package_data=True,
+    python_requires=">=3.5",
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
@@ -59,12 +59,12 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        "Programming Language :: Python :: 3.7",
     ],
     build_requires=[
         'pytest-trio',
     ],
     install_requires=[
-        'trio>=0.3',
+        'trio>=0.9',
     ],
-    python_requires=">=3.5",
 )

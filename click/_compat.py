@@ -464,7 +464,7 @@ if WIN:
     # Windows has a smaller terminal
     DEFAULT_COLUMNS = 79
 
-    from ._winconsole import _get_windows_console_stream
+    from ._winconsole import _get_windows_console_stream, _wrap_std_stream
 
     def _get_argv_encoding():
         import locale
@@ -517,6 +517,7 @@ else:
         return getattr(sys.stdin, 'encoding', None) or get_filesystem_encoding()
 
     _get_windows_console_stream = lambda *x: None
+    _wrap_std_stream = lambda *x: None
 
 
 def term_len(x):
@@ -542,6 +543,7 @@ def _make_cached_stream_func(src_func, wrapper_func):
             return rv
         rv = wrapper_func()
         try:
+            stream = src_func()  # In case wrapper_func() modified the stream
             cache[stream] = rv
         except Exception:
             pass

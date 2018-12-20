@@ -1,5 +1,11 @@
 Welcome to the Trio-Click Documentation
-=======================================
+==================================
+.. rst-class:: hide-header
+
+.. image:: _static/click-logo.png
+    :align: center
+    :scale: 50%
+    :target: https://palletsprojects.com/p/click/
 
 Trio-Click ist a fork of Click that works well with Trio. 
 
@@ -53,8 +59,8 @@ You can get the library directly from PyPI::
 
     pip install trio-click
 
-Documentation Contents
-----------------------
+Documentation
+-------------
 
 This part of the documentation guides you through all of the library's
 usage patterns.

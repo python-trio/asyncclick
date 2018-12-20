@@ -95,7 +95,9 @@ def _verify_python3_env():
                 'is not supported'
             ) % bad_locale
 
-    raise RuntimeError('Click will abort further execution because Python 3 '
-                       'was configured to use ASCII as encoding for the '
-                       'environment.  Consult http://click.pocoo.org/python3/ '
-                       'for mitigation steps.' + extra)
+    raise RuntimeError(
+        'Click will abort further execution because Python 3 was'
+        ' configured to use ASCII as encoding for the environment.'
+        ' Consult https://click.palletsprojects.com/en/7.x/python3/ for'
+        ' mitigation steps.' + extra
+    )

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import trio_click as click
+import pytest
 
 
 def test_nargs_star(runner):
@@ -286,3 +287,11 @@ def test_defaults_for_nargs(runner):
     result = runner.invoke(cmd, ['3'])
     assert result.exception is not None
     assert 'argument a takes 2 values' in result.output
+
+
+def test_multiple_param_decls_not_allowed(runner):
+    with pytest.raises(TypeError):
+        @click.command()
+        @click.argument('x', click.Choice(['a', 'b']))
+        def copy(x):
+            click.echo(x)
