@@ -1,3 +1,10 @@
+trio-click (1:7.0.1-1) unstable; urgency=medium
+
+  * Merge to 7.0
+  * Switched to AnyIO (instead of directly using Trio).
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Thu, 20 Dec 2018 14:44:04 +0100
+
 trio-click (1:7.0~dev5-1) unstable; urgency=medium
 
   * fix version
