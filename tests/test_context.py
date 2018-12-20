@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import trio_click as click
+import pytest
 
 
 def test_ensure_context_objects(runner):
@@ -242,17 +243,18 @@ def test_make_pass_decorator_args(runner):
     assert result.output == 'foocmd\n'
 
 
-def test_exit_not_standalone():
+@pytest.mark.trio
+async def test_exit_not_standalone():
     @click.command()
     @click.pass_context
     def cli(ctx):
         ctx.exit(1)
 
-    assert cli.main([], 'test_exit_not_standalone', standalone_mode=False) == 1
+    assert await cli.main([], 'test_exit_not_standalone', standalone_mode=False) == 1
 
     @click.command()
     @click.pass_context
     def cli(ctx):
         ctx.exit(0)
 
-    assert cli.main([], 'test_exit_not_standalone', standalone_mode=False) == 0
+    assert await cli.main([], 'test_exit_not_standalone', standalone_mode=False) == 0

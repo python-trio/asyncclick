@@ -96,7 +96,7 @@ async def resolve_ctx(cli, prog_name, args):
     while args:
         if isinstance(ctx.command, MultiCommand):
             if not ctx.command.chain:
-                cmd_name, cmd, args = ctx.command.resolve_command(ctx, args)
+                cmd_name, cmd, args = await ctx.command.resolve_command(ctx, args)
                 if cmd is None:
                     return ctx
                 ctx = await cmd.make_context(cmd_name, args, parent=ctx,
@@ -105,10 +105,10 @@ async def resolve_ctx(cli, prog_name, args):
             else:
                 # Walk chained subcommand contexts saving the last one.
                 while args:
-                    cmd_name, cmd, args = ctx.command.resolve_command(ctx, args)
+                    cmd_name, cmd, args = await ctx.command.resolve_command(ctx, args)
                     if cmd is None:
                         return ctx
-                    sub_ctx = cmd.make_context(cmd_name, args, parent=ctx,
+                    sub_ctx = await cmd.make_context(cmd_name, args, parent=ctx,
                                                allow_extra_args=True,
                                                allow_interspersed_args=False,
                                                resilient_parsing=True)
