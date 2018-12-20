@@ -39,12 +39,12 @@ setup(
         ],
         'docs': [
             'sphinx',
-        ]
+        ],
+    },
     project_urls={
         "Code": "https://github.com/python-trio/trio-click",
         "Issue tracker": "https://github.com/python-trio/trio-click/issues",
     },
-    license="BSD",
     include_package_data=True,
     python_requires=">=3.5",
     classifiers=[
@@ -60,9 +60,6 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         "Programming Language :: Python :: 3.7",
-    ],
-    build_requires=[
-        'pytest-trio',
     ],
     install_requires=[
         'trio>=0.9',
