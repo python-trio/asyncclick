@@ -1,7 +1,7 @@
 from trio_click.testing import CliRunner
 
 import pytest
-import trio
+import anyio
 from functools import partial
 
 class SyncCliRunner(CliRunner):
@@ -11,7 +11,7 @@ class SyncCliRunner(CliRunner):
             return fn(*a,**k)
         if k:
             fn = partial(fn, **k)
-        return trio.run(fn, *a)
+        return anyio.run(fn, *a)
 
 @pytest.fixture(scope='function')
 def runner(request):

@@ -1,7 +1,7 @@
 import copy
 import os
 import re
-import trio
+import anyio
 
 from .utils import echo
 from .parser import split_arg_string
@@ -220,7 +220,7 @@ def add_subcommand_completions(ctx, incomplete, completions_out):
             completions_out.extend([(c.name, c.get_short_help_str()) for c in remaining_commands])
 
 
-def get_choices(cli, prog_name, args, incomplete):
+def get_choices(cli, prog_name, args, incomplete, *, _anyio_backend="trio"):
     """
     :param cli: command definition
     :param prog_name: the program that is running
@@ -230,7 +230,7 @@ def get_choices(cli, prog_name, args, incomplete):
     """
     all_args = copy.deepcopy(args)
 
-    ctx = trio.run(resolve_ctx,cli, prog_name, args)
+    ctx = anyio.run(resolve_ctx,cli, prog_name, args, backend=_anyio_backend)
     if ctx is None:
         return []
 

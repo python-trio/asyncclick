@@ -63,5 +63,6 @@ setup(
     ],
     install_requires=[
         'trio>=0.9',
+        'anyio',
     ],
 )

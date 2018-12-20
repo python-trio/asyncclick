@@ -2,7 +2,7 @@ import errno
 import inspect
 import os
 import sys
-import trio
+import anyio
 from inspect import iscoroutine
 from contextlib import contextmanager
 from itertools import repeat
@@ -765,12 +765,12 @@ class BaseCommand(object):
             echo('Aborted!', file=sys.stderr)
             sys.exit(1)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, _anyio_backend="trio", **kwargs):
         """Alias for :meth:`main`."""
         main = self.main
         if kwargs:
             main = partial(main, **kwargs)
-        return trio.run(main,*args)
+        return anyio.run(main,*args, backend=_anyio_backend)
 
 
 class Command(BaseCommand):

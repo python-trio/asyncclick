@@ -4,7 +4,8 @@
 What's Trio-Click?
 ------------------
 
-Trio-Click ist a fork of Click that works well with Trio.
+Trio-Click ist a fork of Click that works well with Trio, asyncio, or
+curio.
 
 Click is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary. It's the "Command
@@ -41,7 +42,7 @@ What does it look like? Here is an example of a simple Click program:
 
 .. code-block:: python
 
-    import trio
+    import anyio
     import trio_click as click
     
     @click.command()
@@ -51,14 +52,14 @@ What does it look like? Here is an example of a simple Click program:
     async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
         for x in range(count):
-            if x: await trio.sleep(0.1)
+            if x: await anyio.sleep(0.1)
             click.echo("Hello, %s!" % name)
     
     if __name__ == '__main__':
-        hello()
+        hello(_anyio_backend="trio")  # or asyncio, or curio
 
 .. note::
-    Trio-Click automagically starts a Trio event loop and runs your
+    Trio-Click automagically starts an anyio event loop and runs your
     code asynchronously.
 
 And what it looks like when run:
