@@ -4,7 +4,7 @@ import os
 import sys
 import anyio
 from inspect import iscoroutine
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from itertools import repeat
 from functools import update_wrapper, partial
 
@@ -20,6 +20,10 @@ from .globals import push_context, pop_context
 
 from ._compat import isidentifier, iteritems, string_types
 from ._unicodefun import _verify_python3_env
+try:
+    from contextlib import AsyncExitStack
+except ImportError:
+    from async_exit_stack import AsyncExitStack
 
 
 _missing = object()
@@ -145,9 +149,13 @@ class Context(object):
     control special execution features such as reading data from
     environment variables.
 
-    A context can be used as context manager in which case it will call
-    :meth:`close` on teardown.
+    A context can be used as async context manager in which case it will
+    close any managed contexts, and call :meth:`close` on teardown.
 
+    A context exports `enter_context` and `enter_async_context` methods.
+    You can use this to set up contexts in a command group which you can
+    then use in commands. See :class:`contextlib.ExitStack` for details.
+    
     .. versionadded:: 2.0
        Added the `resilient_parsing`, `help_option_names`,
        `token_normalize_func` parameters.
@@ -159,6 +167,9 @@ class Context(object):
     .. versionadded:: 4.0
        Added the `color`, `ignore_unknown_options`, and
        `max_content_width` parameters.
+
+    .. versionadded:: 7.0.trio_click
+       Added `enter_context` and `enter_async_context` methods.
 
     :param command: the command class for this context.
     :param parent: the parent context.
@@ -345,20 +356,33 @@ class Context(object):
 
         self._close_callbacks = []
         self._depth = 0
+        self._async_mgr = None
 
-    def __enter__(self):
+    async def __aenter__(self):
+        if self._async_mgr is None:
+            self._async_mgr = AsyncExitStack()
+            self._ctx_mgr = await self._async_mgr.__aenter__()
         self._depth += 1
         push_context(self)
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
+    async def __aexit__(self, exc_type, exc_value, tb):
         self._depth -= 1
         if self._depth == 0:
+            await self._async_mgr.__aexit__(exc_type, exc_value, tb)
             self.close()
         pop_context()
 
-    @contextmanager
-    def scope(self, cleanup=True):
+    def enter_context(self, ctx):
+        """See :meth:contextlib.ExitStack.enter_context`."""
+        return self._ctx_mgr.enter_context(ctx)
+
+    def enter_async_context(self, ctx):
+        """See :meth:contextlib.ExitStack.enter_async_context`."""
+        return self._ctx_mgr.enter_async_context(ctx)
+
+    @asynccontextmanager
+    async def scope(self, cleanup=True):
         """This helper method can be used with the context object to promote
         it to the current thread local (see :func:`get_current_context`).
         The default behavior of this is to invoke the cleanup functions which
@@ -370,12 +394,12 @@ class Context(object):
 
         Example usage::
 
-            with ctx.scope():
+            async with ctx.scope():
                 assert get_current_context() is ctx
 
         This is equivalent::
 
-            with ctx:
+            async with ctx:
                 assert get_current_context() is ctx
 
         .. versionadded:: 5.0
@@ -389,7 +413,7 @@ class Context(object):
         if not cleanup:
             self._depth += 1
         try:
-            with self as rv:
+            async with self as rv:
                 yield rv
         finally:
             if not cleanup:
@@ -557,7 +581,7 @@ class Context(object):
 
         args = args[2:]
         with augment_usage_errors(self):
-            with ctx:
+            async with ctx:
                 rv = callback(*args, **kwargs)
                 if iscoroutine(rv):
                     rv = await rv
@@ -646,7 +670,7 @@ class BaseCommand(object):
             if key not in extra:
                 extra[key] = value
         ctx = Context(self, info_name=info_name, parent=parent, **extra)
-        with ctx.scope(cleanup=False):
+        async with ctx.scope(cleanup=False):
             await self.parse_args(ctx, args)
         return ctx
 
@@ -719,7 +743,7 @@ class BaseCommand(object):
 
         try:
             try:
-                with await self.make_context(prog_name, args, **extra) as ctx:
+                async with await self.make_context(prog_name, args, **extra) as ctx:
                     rv = await self.invoke(ctx)
                     if not standalone_mode:
                         return rv
@@ -1125,7 +1149,7 @@ class MultiCommand(Command):
             if self.invoke_without_command:
                 if not self.chain:
                     return await Command.invoke(self, ctx)
-                with ctx:
+                async with ctx:
                     await Command.invoke(self, ctx)
                     return await _process_result([])
             ctx.fail('Missing command.')
@@ -1141,12 +1165,12 @@ class MultiCommand(Command):
         if not self.chain:
             # Make sure the context is entered so we do not clean up
             # resources until the result processor has worked.
-            with ctx:
+            async with ctx:
                 cmd_name, cmd, args = await self.resolve_command(ctx, args)
                 ctx.invoked_subcommand = cmd_name
                 await Command.invoke(self, ctx)
                 sub_ctx = await cmd.make_context(cmd_name, args, parent=ctx)
-                with sub_ctx:
+                async with sub_ctx:
                     return await _process_result(await sub_ctx.command.invoke(sub_ctx))
 
         # In chain mode we create the contexts step by step, but after the
@@ -1154,7 +1178,7 @@ class MultiCommand(Command):
         # know the subcommands yet, the invoked subcommand attribute is
         # set to ``*`` to inform the command that subcommands are executed
         # but nothing else.
-        with ctx:
+        async with ctx:
             ctx.invoked_subcommand = args and '*' or None
             await Command.invoke(self, ctx)
 
@@ -1172,7 +1196,7 @@ class MultiCommand(Command):
 
             rv = []
             for sub_ctx in contexts:
-                with sub_ctx:
+                async with sub_ctx:
                     rv.append(await sub_ctx.command.invoke(sub_ctx))
             return await _process_result(rv)
 

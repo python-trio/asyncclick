@@ -30,7 +30,7 @@ async def test_return_values():
     def cli():
         return 42
 
-    with await cli.make_context('foo', []) as ctx:
+    async with await cli.make_context('foo', []) as ctx:
         rv = await cli.invoke(ctx)
         assert rv is 42
 
@@ -55,7 +55,8 @@ def test_basic_group(runner):
     assert 'ROOT EXECUTED' not in result.output
 
     result = runner.invoke(cli, ['subcommand'])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.exit_code == 0
     assert 'ROOT EXECUTED' in result.output
     assert 'SUBCOMMAND EXECUTED' in result.output

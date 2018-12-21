@@ -12,6 +12,8 @@ def test_nargs_star(runner):
         click.echo('dst=%s' % dst)
 
     result = runner.invoke(copy, ['foo.txt', 'bar.txt', 'dir'])
+    if result.exception:
+        raise result.exception
     assert not result.exception
     assert result.output.splitlines() == [
         'src=foo.txt|bar.txt',

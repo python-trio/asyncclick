@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import trio_click as click
 import pytest
+from contextlib import contextmanager, asynccontextmanager
 
 
 def test_ensure_context_objects(runner):
@@ -99,17 +100,18 @@ def test_multi_enter(runner):
 
     @click.command()
     @click.pass_context
-    def cli(ctx):
+    async def cli(ctx):
         def callback():
             called.append(True)
         ctx.call_on_close(callback)
 
-        with ctx:
+        async with ctx:
             pass
         assert not called
 
     result = runner.invoke(cli, [])
-    assert result.exception is None
+    if result.exception:
+        raise result.exception
     assert called == [True]
 
 
@@ -145,7 +147,8 @@ def test_context_meta(runner):
     runner.invoke(cli, [], catch_exceptions=False)
 
 
-def test_context_pushing():
+@pytest.mark.anyio
+async def test_context_pushing():
     rv = []
 
     @click.command()
@@ -158,17 +161,65 @@ def test_context_pushing():
     def test_callback():
         rv.append(42)
 
-    with ctx.scope(cleanup=False):
+    async with ctx.scope(cleanup=False):
         # Internal
         assert ctx._depth == 2
 
     assert rv == []
 
-    with ctx.scope():
+    async with ctx.scope():
         # Internal
         assert ctx._depth == 1
 
     assert rv == [42]
+
+
+@pytest.mark.anyio
+async def test_async_context_mgr():
+    @asynccontextmanager
+    async def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    @click.command()
+    def cli():
+        pass
+
+    ctx = click.Context(cli)
+
+    async with ctx.scope():
+        rv = await ctx.enter_async_context(manager())
+        assert rv[0] == 1, rv
+
+        # Internal
+        assert ctx._depth == 1
+
+    assert rv == [0], rv
+
+
+@pytest.mark.anyio
+async def test_context_mgr():
+    @contextmanager
+    def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    @click.command()
+    def cli():
+        pass
+
+    ctx = click.Context(cli)
+
+    async with ctx.scope():
+        rv = ctx.enter_context(manager())
+        assert rv[0] == 1, rv
+
+        # Internal
+        assert ctx._depth == 1
+
+    assert rv == [0], rv
 
 
 def test_pass_obj(runner):
