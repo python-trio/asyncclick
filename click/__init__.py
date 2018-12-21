@@ -12,6 +12,9 @@ composable.
 :license: BSD, see LICENSE.rst for more details.
 """
 
+# not exportedby default. Set this to the intended backend.
+anyio_backend="trio"
+
 # Core classes
 from .core import Context, BaseCommand, Command, MultiCommand, Group, \
      CommandCollection, Parameter, Option, Argument

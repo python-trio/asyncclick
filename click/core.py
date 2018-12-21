@@ -765,12 +765,16 @@ class BaseCommand(object):
             echo('Aborted!', file=sys.stderr)
             sys.exit(1)
 
-    def __call__(self, *args, _anyio_backend="trio", **kwargs):
+    def __call__(self, *args, _anyio_backend=None, **kwargs):
         """Alias for :meth:`main`."""
         main = self.main
-        if kwargs:
-            main = partial(main, **kwargs)
-        return anyio.run(main,*args, backend=_anyio_backend)
+        if _anyio_backend is None:
+            import click
+            _anyio_backend = click.anyio_backend
+        return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
+    
+    async def _main(self, main, args, kwargs):
+        return await main(*args, **kwargs)
 
 
 class Command(BaseCommand):
