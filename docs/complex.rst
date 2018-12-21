@@ -145,6 +145,7 @@ Let's assume that our ``Repo`` looks like this:
 
     import os
     import click
+    from contextlib import contextmanager
 
     class Repo(object):
         def __init__(self, home=None, debug=False):
@@ -152,7 +153,7 @@ Let's assume that our ``Repo`` looks like this:
             self.debug = debug
         @contextmanager
         def connect(self):
-            with self.open_database(os.path.join(self.home, "database.db") as db:
+            with self.open_database(os.path.join(self.home, "database.db")) as db:
                 yield db
 
 Ordinarily, you'd use this object like this:
