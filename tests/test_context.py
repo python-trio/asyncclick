@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import click
+from contextlib import contextmanager
 
 
 def test_ensure_context_objects(runner):
@@ -168,6 +169,26 @@ def test_context_pushing():
         assert ctx._depth == 1
 
     assert rv == [42]
+
+
+def test_context_mgr():
+    @contextmanager
+    def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    @click.command()
+    def cli():
+        pass
+
+    ctx = click.Context(cli)
+
+    with ctx.scope():
+        rv = ctx.enter_context(manager())
+        assert rv[0] == 1, rv
+
+    assert rv == [0], rv
 
 
 def test_pass_obj(runner):

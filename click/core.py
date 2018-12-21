@@ -3,6 +3,10 @@ import inspect
 import os
 import sys
 from contextlib import contextmanager
+try:
+    from contextlib import ExitStack
+except ImportError:
+    from contextlib2 import ExitStack  # Python 2
 from itertools import repeat
 from functools import update_wrapper
 
@@ -337,8 +341,9 @@ class Context(object):
         #: Controls if styling output is wanted or not.
         self.color = color
 
-        self._close_callbacks = []
         self._depth = 0
+        self._ctx_mgr = ExitStack()
+        self._ctx_m = self._ctx_mgr.__enter__()
 
     def __enter__(self):
         self._depth += 1
@@ -350,6 +355,52 @@ class Context(object):
         if self._depth == 0:
             self.close()
         pop_context()
+
+    def enter_context(self, ctx):
+        """This method exports the entry point of the context's
+        internal `ExitStack` object. See `ExitStack.enter_context` for
+        details.
+
+        Example usage::
+
+            from contextlib import contextmanager
+            import click
+
+            @contextmanager
+            def test():
+                print("Enter")
+                yield 42
+                print("Exit")
+
+            @click.group()
+            @click.pass_context
+            def cli(ctx):
+                ctx.ensure_object(dict)
+                ctx.obj['test'] = ctx.enter_context(test())
+
+            @cli.command()
+            @click.pass_obj
+            def doit(obj):
+                print("Inside")
+                assert obj['test'] == 42
+
+            cli()
+
+        This code is essentially equivalent to::
+
+            with test() as value:
+                assert value == 42
+
+        but allows you to add set-up code that requires a `with` statement
+        to the body of a command group, thereby reducing code duplication.
+
+        :param ctx: The context to enter.
+
+        :return: Whatever the object's `__enter__` method returns.
+
+        .. versionadded:: 8.0
+        """
+        return self._ctx_m.enter_context(ctx)
 
     @contextmanager
     def scope(self, cleanup=True):
@@ -431,14 +482,17 @@ class Context(object):
 
         :param f: the function to execute on teardown.
         """
-        self._close_callbacks.append(f)
+        self._ctx_m.callback(f)
         return f
 
     def close(self):
         """Invokes all close callbacks."""
-        for cb in self._close_callbacks:
-            cb()
-        self._close_callbacks = []
+        if self._ctx_mgr:
+            self._ctx_mgr.__exit__(None, None, None)
+
+        # create a new manager
+        self._ctx_mgr = ExitStack()
+        self._ctx_m = self._ctx_mgr.__enter__()
 
     @property
     def command_path(self):

@@ -1,5 +1,6 @@
 import io
 import re
+import sys
 from setuptools import setup
 
 with io.open("README.rst", "rt", encoding="utf8") as f:
@@ -7,6 +8,10 @@ with io.open("README.rst", "rt", encoding="utf8") as f:
 
 with io.open("click/__init__.py", "rt", encoding="utf8") as f:
     version = re.search(r"__version__ = \'(.*?)\'", f.read()).group(1)
+
+install_requires = []
+if sys.version_info[0] == 2:
+    install_requires.append("contextlib2")
 
 setup(
     name="click",
@@ -27,6 +32,7 @@ setup(
     packages=["click"],
     include_package_data=True,
     python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*",
+    install_requires = install_requires,
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
