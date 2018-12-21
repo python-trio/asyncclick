@@ -138,6 +138,48 @@ the repo):
     def clone(repo, src, dest):
         pass
 
+Sometimes, setting up your state requires using a ``with …`` statement.
+Let's assume that our ``Repo`` looks like this:
+
+.. click:example::
+
+    import os
+    import click
+
+    class Repo(object):
+        def __init__(self, home=None, debug=False):
+            self.home = os.path.abspath(home or '.')
+            self.debug = debug
+        @contextmanager
+        def connect(self):
+            with self.open_database(os.path.join(self.home, "database.db") as db:
+                yield db
+
+Ordinarily, you'd use this object like this:
+
+.. click:example::
+
+    def work_repo(home):
+        with Repo(home) as repo_db:
+            do_something_with(repo_db)
+
+but you can't use that ``with`` statement in a group command – that would
+terminate the context before the child runs. Fortunately, there's a way to
+defer closing the connection:
+
+.. click:example::
+
+    @click.group()
+    @click.option('--repo-home', envvar='REPO_HOME', default='.repo')
+    @click.option('--debug/--no-debug', default=False,
+                  envvar='REPO_DEBUG')
+    @click.pass_context
+    def cli(ctx, repo_home, debug):
+        ctx.obj = ctx.enter_context(Repo(repo_home, debug))
+
+``ctx.obj`` now contains the same value as ``repo_db`` from the sample code
+above, and can be used as usual in the group's commands.
+
 Interleaved Commands
 ````````````````````
 
