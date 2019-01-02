@@ -1,3 +1,9 @@
+trio-click (1:7.0.1-2) unstable; urgency=medium
+
+  * Add an async context manager
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 02 Jan 2019 15:49:40 +0100
+
 trio-click (1:7.0.1-1) unstable; urgency=medium
 
   * Merge to 7.0
