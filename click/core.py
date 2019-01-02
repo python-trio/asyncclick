@@ -4,9 +4,14 @@ import os
 import sys
 import anyio
 from inspect import iscoroutine
-from contextlib import contextmanager, asynccontextmanager
 from itertools import repeat
 from functools import update_wrapper, partial
+try:
+    from contextlib import contextmanager, AsyncExitStack, asynccontextmanager
+except ImportError:
+    from contextlib import contextmanager
+    from async_exit_stack import AsyncExitStack
+    from async_generator import asynccontextmanager
 
 from .types import convert_type, IntRange, BOOL
 from .utils import PacifyFlushWrapper, make_str, make_default_short_help, \
@@ -20,10 +25,6 @@ from .globals import push_context, pop_context
 
 from ._compat import isidentifier, iteritems, string_types
 from ._unicodefun import _verify_python3_env
-try:
-    from contextlib import AsyncExitStack
-except ImportError:
-    from async_exit_stack import AsyncExitStack
 
 
 _missing = object()
