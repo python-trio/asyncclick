@@ -26,6 +26,7 @@ from .globals import push_context, pop_context
 from ._compat import isidentifier, iteritems, string_types
 from ._unicodefun import _verify_python3_env
 
+from gc import collect as gc
 
 _missing = object()
 
@@ -363,16 +364,25 @@ class Context(object):
         if self._async_mgr is None:
             self._async_mgr = AsyncExitStack()
             self._ctx_mgr = await self._async_mgr.__aenter__()
+            print("NEW",file=sys.stderr)
+
         self._depth += 1
+        print("ENTER",self._depth,file=sys.stderr)
         push_context(self)
         return self
 
     async def __aexit__(self, exc_type, exc_value, tb):
+        gc()
         self._depth -= 1
         if self._depth == 0:
             await self._async_mgr.__aexit__(exc_type, exc_value, tb)
+            print("EXIT",self._depth,file=sys.stderr)
             self.close()
+        else:
+            print("NO_EXIT",self._depth,file=sys.stderr)
+        gc()
         pop_context()
+        gc()
 
     def enter_context(self, ctx):
         """See :meth:contextlib.ExitStack.enter_context`."""
@@ -413,12 +423,25 @@ class Context(object):
         """
         if not cleanup:
             self._depth += 1
+            print("SCOPE+",self._depth, file=sys.stderr)
+        else:
+            print("NOSCOPE+",self._depth, file=sys.stderr)
         try:
             async with self as rv:
                 yield rv
         finally:
+            gc()
             if not cleanup:
                 self._depth -= 1
+                print("SCOPE-",self._depth, file=sys.stderr)
+                if self._depth == 0:
+                    if self._async_mgr is not None:
+                        await self._async_mgr.__aexit__(None,None,None)
+                        self._async_mgr = None
+                    self.close()
+            else:
+                print("NOSCOPE-",self._depth, file=sys.stderr)
+            gc()
 
     @property
     def meta(self):
@@ -794,8 +817,8 @@ class BaseCommand(object):
         """Alias for :meth:`main`."""
         main = self.main
         if _anyio_backend is None:
-            import click
-            _anyio_backend = click.anyio_backend
+            import trio_click
+            _anyio_backend = trio_click.anyio_backend
         return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
     
     async def _main(self, main, args, kwargs):
