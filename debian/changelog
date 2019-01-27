@@ -1,3 +1,9 @@
+trio-click (1:7.0.3-1) unstable; urgency=medium
+
+  * Removed debug output mistakenly left in the code
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sun, 27 Jan 2019 14:30:39 +0100
+
 trio-click (1:7.0.2-1) unstable; urgency=medium
 
   * Mistakenly imported the "real" click
