@@ -30,9 +30,15 @@ setup(
     description='A simple anyio-compatible fork of Click, for '
                 'powerful command line utilities.',
     license='BSD',
+    tests_require=[
+        'pytest',
+        'pytest-trio',
+    ],
     extras_require={
         'dev': [
             'pytest>=3',
+            'pytest-trio',
+            'pytest-runner',
             'coverage',
             'tox',
             'sphinx',
