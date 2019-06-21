@@ -1,0 +1,26 @@
+---
+
+variables:
+  CI_GPG_KEYID: "B0F6C87CE7E8AE255509CCB6B9C2AEB2A8AFD611"
+  DEBEMAIL: "Gitlab CI <gitlabci-noreply@noris.de>"
+  USER: "root"
+
+before_script:
+  - "rm -rf ../.mgr"
+  - "git clone https://gitlab.noris.net/${CI_PROJECT_NAMESPACE}/sourcemgr ../.mgr"
+  - "(cd ../.mgr; git show --oneline)"
+  - "/bin/bash -x ../.mgr/gitlab-ci"
+stretch:
+  only: 
+    - tags
+  image: 'docker-registry.noris.net/oci/debbuilder:stretch'
+  script:
+    - 'dpkg-buildpackage -b -k${CI_GPG_KEYID}'
+    - dput -d achmed ../*.changes
+buster:
+  only:
+    - tags
+  image: 'docker-registry.noris.net/oci/debbuilder:buster'
+  script:
+    - 'dpkg-buildpackage -b -k${CI_GPG_KEYID}'
+    - dput -d achmed ../*.changes
