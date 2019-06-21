@@ -40,6 +40,9 @@ setup(
         'docs': [
             'sphinx',
         ],
+        ':python_version < "3.7"': [
+            'async_exit_stack',
+        ],
     },
     project_urls={
         "Code": "https://github.com/python-trio/asyncclick",
@@ -60,9 +63,4 @@ setup(
     install_requires=[
         'anyio',
     ],
-    extras_require={
-        ':python_version < "3.7"': [
-            'async_exit_stack',
-        ],
-    },
 )
