@@ -2,11 +2,11 @@ import os
 import sys
 
 import pytest
-import trio_click as click
+import asyncclick as click
 
-from trio_click.testing import CliRunner
+from asyncclick.testing import CliRunner
 
-from trio_click._compat import WIN
+from asyncclick._compat import WIN
 
 # Use the most reasonable io that users would use for the python version.
 from io import BytesIO as ReasonableBytesIO

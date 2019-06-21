@@ -1,10 +1,10 @@
-\$ trio-click\_
+\$ asyncclick\_
 ==============
 
-What's Trio-Click?
+What's AsyncClick?
 ------------------
 
-Trio-Click ist a fork of Click that works well with Trio, asyncio, or
+AsyncClick ist a fork of Click that works well with trio, asyncio, or
 curio.
 
 Click is a Python package for creating beautiful command line interfaces
@@ -29,9 +29,9 @@ Install and update using `pip`_:
 
 .. code-block:: text
 
-    $ pip install trio-click
+    $ pip install asyncclick
 
-Trio-Click supports Python 3.5 and newer, and PyPy3.
+AsyncClick supports Python 3.5 and newer, and PyPy3.
 
 .. _pip: https://pip.pypa.io/en/stable/quickstart/
 
@@ -43,7 +43,7 @@ What does it look like? Here is an example of a simple Click program:
 .. code-block:: python
 
     import anyio
-    import trio_click as click
+    import asyncclick as click
     
     @click.command()
     @click.option("--count", default=1, help="Number of greetings.")
@@ -59,7 +59,7 @@ What does it look like? Here is an example of a simple Click program:
         hello(_anyio_backend="trio")  # or asyncio, or curio
 
 .. note::
-    Trio-Click automagically starts an anyio event loop and runs your
+    AsyncClick automagically starts an anyio event loop and runs your
     code asynchronously.
 
 And what it looks like when run:
@@ -83,7 +83,7 @@ donate today`_.
 
 .. _please donate today: https://palletsprojects.com/donate
 
-The Trio-Click fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
+The AsyncClick fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
 It's not a lot of work, so if you'd like to motivate me, donate to the
 charity of your choice and tell me that you've done so. ;-)
 

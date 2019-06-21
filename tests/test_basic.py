@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import uuid
-import trio_click as click
+import asyncclick as click
 import pytest
 
 

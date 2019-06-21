@@ -1,4 +1,4 @@
-import trio_click as click
+import asyncclick as click
 try:
     from urllib import parse as urlparse
 except ImportError:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import trio_click as click
-from trio_click._bashcomplete import get_choices
+import asyncclick as click
+from asyncclick._bashcomplete import get_choices
 
 
 def choices_without_help(cli, args, incomplete):

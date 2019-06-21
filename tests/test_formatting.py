@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import trio_click as click
+import asyncclick as click
 
 
 def test_basic_functionality(runner):

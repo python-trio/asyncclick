@@ -1,5 +1,5 @@
 import sys
-import trio_click as click
+import asyncclick as click
 import pytest
 
 

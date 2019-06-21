@@ -117,7 +117,7 @@ The following code implements an integer type that accepts hex and octal
 numbers in addition to normal integers, and converts them into regular
 integers::
 
-    import trio_click as click
+    import asyncclick as click
 
     class BasedIntParamType(click.ParamType):
         name = 'integer'

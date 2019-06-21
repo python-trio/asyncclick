@@ -133,7 +133,7 @@ with this decorator will make it into a callable script:
 
 .. click:example::
 
-    import trio_click as click
+    import asyncclick as click
 
     @click.command()
     def hello():

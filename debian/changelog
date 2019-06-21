@@ -1,3 +1,9 @@
+asyncclick (1:7.0.4-2) unstable; urgency=medium
+
+  * move to anyio
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Fri, 21 Jun 2019 09:36:52 +0200
+
 trio-click (1:7.0.3-1) unstable; urgency=medium
 
   * Removed debug output mistakenly left in the code

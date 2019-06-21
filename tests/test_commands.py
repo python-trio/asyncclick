@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
-import trio_click as click
+import asyncclick as click
 import pytest
 from inspect import iscoroutine
 

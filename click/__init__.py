@@ -12,7 +12,7 @@ composable.
 :license: BSD, see LICENSE.rst for more details.
 """
 
-# not exportedby default. Set this to the intended backend.
+# not exported by default. Set this to the intended backend.
 anyio_backend="trio"
 
 # Core classes

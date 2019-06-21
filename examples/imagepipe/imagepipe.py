@@ -1,4 +1,4 @@
-import trio_click as click
+import asyncclick as click
 from functools import update_wrapper
 from PIL import Image, ImageFilter, ImageEnhance
 

@@ -179,5 +179,5 @@ If you do want to ignore the warning and continue using
 ``unicode_literals`` on your own peril, you can disable the warning as
 follows::
 
-    import trio_click as click
+    import asyncclick as click
     click.disable_unicode_literals_warning = True

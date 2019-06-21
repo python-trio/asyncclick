@@ -169,7 +169,7 @@ class Context(object):
        Added the `color`, `ignore_unknown_options`, and
        `max_content_width` parameters.
 
-    .. versionadded:: 7.0.trio_click
+    .. versionadded:: 7.0.asyncclick
        Added `enter_context` and `enter_async_context` methods.
 
     :param command: the command class for this context.
@@ -794,8 +794,8 @@ class BaseCommand(object):
         """Alias for :meth:`main`."""
         main = self.main
         if _anyio_backend is None:
-            import trio_click
-            _anyio_backend = trio_click.anyio_backend
+            import asyncclick
+            _anyio_backend = asyncclick.anyio_backend
         return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
     
     async def _main(self, main, args, kwargs):

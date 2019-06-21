@@ -3,4 +3,4 @@
 /*.debhelper
 /debhelper-build-stamp
 /*.substvars
-/python3-trio-click
+/python3-asyncclick

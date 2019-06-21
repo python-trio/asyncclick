@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import re
 import os
-import trio_click as click
+import asyncclick as click
 import pytest
 
-from trio_click._compat import text_type
+from asyncclick._compat import text_type
 
 
 def test_prefixes(runner):

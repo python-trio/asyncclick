@@ -1,4 +1,4 @@
-import trio_click as click
+import asyncclick as click
 
 
 all_colors = 'black', 'red', 'green', 'yellow', 'blue', 'magenta', \

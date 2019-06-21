@@ -2,7 +2,7 @@ import sys
 import json
 import subprocess
 
-from trio_click._compat import WIN
+from asyncclick._compat import WIN
 
 
 IMPORT_TEST = b'''\
@@ -23,7 +23,7 @@ def tracking_import(module, locals=None, globals=None, fromlist=None,
     return rv
 builtins.__import__ = tracking_import
 
-import trio_click as click
+import asyncclick as click
 rv = list(found_imports)
 import json
 click.echo(json.dumps(rv))

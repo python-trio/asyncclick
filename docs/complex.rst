@@ -77,7 +77,7 @@ state of our tool:
 .. click:example::
 
     import os
-    import trio_click as click
+    import asyncclick as click
 
 
     class Repo(object):

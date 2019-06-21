@@ -6,18 +6,18 @@ this is not entirely possible.  In case we need to break backwards
 compatibility this document gives you information about how to upgrade or
 handle backwards compatibility properly.
 
-.. _upgrade-to-trio:
+.. _upgrade-to-anyio:
 
-Upgrading to trio-click
+Upgrading to asyncclick
 -----------------------
 
-The trio-compatible version of Click is mostly backwards compatible.
+The anyio-compatible version of Click is mostly backwards compatible.
 
 Several methods, most notably :meth:`BaseCommand.main` and
 :meth:`Context.invoke`, are now asynchronous.
 The :meth:`BaseCommand.__call__` alias invokes the main entry point via
-`trio.run`. If you already have an async main program, use ``await
-cmd.main()`` instead of ``cmd()``.
+`anyio.run`. If you already have an async main program, simply use
+``await cmd.main()`` instead of ``cmd()``.
 
 Commands and callbacks may be asynchronous; Click auto-``await``s them.
 
@@ -96,7 +96,7 @@ to upgrade.
 In case you want to support both Click 1.0 and Click 2.0, you can make a
 simple decorator that adjusts the signatures::
 
-    import trio_click as click
+    import asyncclick as click
     from functools import update_wrapper
 
     def compatcallback(f):

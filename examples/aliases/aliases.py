@@ -1,5 +1,5 @@
 import os
-import trio_click as click
+import asyncclick as click
 
 try:
     import ConfigParser as configparser

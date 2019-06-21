@@ -1,4 +1,4 @@
-Welcome to the Trio-Click Documentation
+Welcome to the AsyncClick Documentation
 ==================================
 .. rst-class:: hide-header
 
@@ -7,7 +7,8 @@ Welcome to the Trio-Click Documentation
     :scale: 50%
     :target: https://palletsprojects.com/p/click/
 
-Trio-Click ist a fork of Click that works well with Trio. 
+AsyncClick ist a fork of Click that works well with (some) async
+frameworks. Supported: asyncio, trio, and curio.
 
 Click, in turn, is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary.  It's the "Command
@@ -28,7 +29,8 @@ What does it look like?  Here is an example of a simple Click program:
 
 .. click:example::
 
-    import trio_click as click
+    import asyncclick as click
+    import anyio
 
     @click.command()
     @click.option('--count', default=1, help='Number of greetings.')
@@ -37,7 +39,7 @@ What does it look like?  Here is an example of a simple Click program:
     async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
         for x in range(count):
-            if x: await trio.sleep(0.1)
+            if x: await anyio.sleep(0.1)
             click.echo('Hello %s!' % name)
 
     if __name__ == '__main__':
@@ -57,7 +59,7 @@ It automatically generates nicely formatted help pages:
 
 You can get the library directly from PyPI::
 
-    pip install trio-click
+    pip install asyncclick
 
 Documentation
 -------------

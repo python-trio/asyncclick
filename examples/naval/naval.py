@@ -1,4 +1,4 @@
-import trio_click as click
+import asyncclick as click
 
 
 @click.group()
