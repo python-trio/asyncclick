@@ -2,7 +2,9 @@ Source: asyncclick
 Maintainer: Matthias Urlichs <matthias@urlichs.de>
 Section: python
 Priority: optional
-Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9)
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9),
+  python3-anyio,
+  python3-trio,
 Standards-Version: 3.9.6
 Homepage: http://github.com/pallets/click
 
