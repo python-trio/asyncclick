@@ -1,5 +1,5 @@
-\$ asyncclick\_
-==============
+asyncclick
+==========
 
 What's AsyncClick?
 ------------------
