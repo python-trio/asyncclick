@@ -21,7 +21,6 @@ setup(
 # but uploading to pypi kindof requires it.
 #   author='Armin Ronacher',
 #   author_email='armin.ronacher@active-4.com',
-    name="click",
     version=version,
     url='http://github.com/python-trio/asyncclick',
     packages=['asyncclick'],
