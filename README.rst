@@ -16,11 +16,12 @@ It aims to make the process of writing command line tools quick and fun
 while also preventing any frustration caused by the inability to
 implement an intended CLI API.
 
-Click in three points:
+AsyncClick in four points:
 
 -   Arbitrary nesting of commands
 -   Automatic help page generation
 -   Supports lazy loading of subcommands at runtime
+-   Seamlessly use async-enabled command and subcommand handlers
 
 Installing
 ----------
@@ -90,6 +91,8 @@ charity of your choice and tell me that you've done so. ;-)
 Links
 -----
 
+These links point to the original, non-async-enabled, version of ``Click``.
+
 *   Website: https://palletsprojects.com/p/click/
 *   Documentation: https://click.palletsprojects.com/
 *   License: `BSD <https://github.com/pallets/click/blob/master/LICENSE.rst>`_
@@ -102,3 +105,5 @@ Links
     *   Windows: https://ci.appveyor.com/project/pallets/click
 
 *   Test coverage: https://codecov.io/gh/pallets/click
+
+The issue tracker for the async version is at https://github.com/click-contrib/asyncclick/issues .
