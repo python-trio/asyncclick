@@ -24,7 +24,7 @@ try:
     PyBuffer_Release = pythonapi.PyBuffer_Release
 except ImportError:
     pythonapi = None
-from ctypes.wintypes import LPWSTR, LPCWSTR
+from ctypes.wintypes import LPWSTR, LPCWSTR, HANDLE
 
 
 c_ssize_p = POINTER(c_ssize_t)
@@ -120,7 +120,7 @@ class _WindowsConsoleReader(_WindowsConsoleRawIOBase):
         code_units_to_be_read = bytes_to_be_read // 2
         code_units_read = c_ulong()
 
-        rv = ReadConsoleW(self.handle, buffer, code_units_to_be_read,
+        rv = ReadConsoleW(HANDLE(self.handle), buffer, code_units_to_be_read,
                           byref(code_units_read), None)
         if GetLastError() == ERROR_OPERATION_ABORTED:
             # wait for KeyboardInterrupt
@@ -153,7 +153,7 @@ class _WindowsConsoleWriter(_WindowsConsoleRawIOBase):
                                        MAX_BYTES_WRITTEN) // 2
         code_units_written = c_ulong()
 
-        WriteConsoleW(self.handle, buf, code_units_to_be_written,
+        WriteConsoleW(HANDLE(self.handle), buf, code_units_to_be_written,
                       byref(code_units_written), None)
         bytes_written = 2 * code_units_written.value
 
@@ -220,16 +220,6 @@ class WindowsChunkedWriter(object):
             to_write = min(total_to_write - written, MAX_BYTES_WRITTEN)
             self.__wrapped.write(text[written:written+to_write])
             written += to_write
-
-
-_wrapped_std_streams = set()
-
-
-def _wrap_std_stream(name):
-    # Python 2 & Windows 7 and below
-    if PY2 and sys.getwindowsversion()[:2] <= (6, 1) and name not in _wrapped_std_streams:
-        setattr(sys, name, WindowsChunkedWriter(getattr(sys, name)))
-        _wrapped_std_streams.add(name)
 
 
 def _get_text_stdin(buffer_stream):

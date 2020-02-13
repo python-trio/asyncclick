@@ -220,7 +220,7 @@ def add_subcommand_completions(ctx, incomplete, completions_out):
             completions_out.extend([(c.name, c.get_short_help_str()) for c in remaining_commands])
 
 
-def get_choices(cli, prog_name, args, incomplete, *, _anyio_backend="trio"):
+async def get_choices(cli, prog_name, args, incomplete):
     """
     :param cli: command definition
     :param prog_name: the program that is running
@@ -230,7 +230,7 @@ def get_choices(cli, prog_name, args, incomplete, *, _anyio_backend="trio"):
     """
     all_args = copy.deepcopy(args)
 
-    ctx = anyio.run(resolve_ctx,cli, prog_name, args, backend=_anyio_backend)
+    ctx = await resolve_ctx(cli, prog_name, args)
     if ctx is None:
         return []
 
@@ -266,7 +266,7 @@ def get_choices(cli, prog_name, args, incomplete, *, _anyio_backend="trio"):
     return sorted(completions)
 
 
-def do_complete(cli, prog_name, include_descriptions):
+async def do_complete(cli, prog_name, include_descriptions):
     cwords = split_arg_string(os.environ['COMP_WORDS'])
     cword = int(os.environ['COMP_CWORD'])
     args = cwords[1:cword]
@@ -275,7 +275,7 @@ def do_complete(cli, prog_name, include_descriptions):
     except IndexError:
         incomplete = ''
 
-    for item in get_choices(cli, prog_name, args, incomplete):
+    for item in await get_choices(cli, prog_name, args, incomplete):
         echo(item[0])
         if include_descriptions:
             # ZSH has trouble dealing with empty array parameters when returned from commands, so use a well defined character '_' to indicate no description is present.
@@ -284,11 +284,11 @@ def do_complete(cli, prog_name, include_descriptions):
     return True
 
 
-def bashcomplete(cli, prog_name, complete_var, complete_instr):
+async def bashcomplete(cli, prog_name, complete_var, complete_instr):
     if complete_instr.startswith('source'):
         shell = 'zsh' if complete_instr == 'source_zsh' else 'bash'
         echo(get_completion_script(prog_name, complete_var, shell))
         return True
     elif complete_instr == 'complete' or complete_instr == 'complete_zsh':
-        return do_complete(cli, prog_name, complete_instr == 'complete_zsh')
+        return await do_complete(cli, prog_name, complete_instr == 'complete_zsh')
     return False

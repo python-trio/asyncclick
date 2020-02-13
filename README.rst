@@ -1,5 +1,5 @@
-\$ asyncclick\_
-==============
+asyncclick
+==========
 
 What's AsyncClick?
 ------------------
@@ -16,11 +16,12 @@ It aims to make the process of writing command line tools quick and fun
 while also preventing any frustration caused by the inability to
 implement an intended CLI API.
 
-Click in three points:
+AsyncClick in four points:
 
 -   Arbitrary nesting of commands
 -   Automatic help page generation
 -   Supports lazy loading of subcommands at runtime
+-   Seamlessly use async-enabled command and subcommand handlers
 
 Installing
 ----------
@@ -54,7 +55,7 @@ What does it look like? Here is an example of a simple Click program:
         for x in range(count):
             if x: await anyio.sleep(0.1)
             click.echo("Hello, %s!" % name)
-    
+
     if __name__ == '__main__':
         hello(_anyio_backend="trio")  # or asyncio, or curio
 
@@ -90,15 +91,13 @@ charity of your choice and tell me that you've done so. ;-)
 Links
 -----
 
+These links point to the original, non-async-enabled, version of ``Click``.
+
 *   Website: https://palletsprojects.com/p/click/
 *   Documentation: https://click.palletsprojects.com/
 *   License: `BSD <https://github.com/pallets/click/blob/master/LICENSE.rst>`_
 *   Releases: https://pypi.org/project/click/
 *   Code: https://github.com/pallets/click
 *   Issue tracker: https://github.com/pallets/click/issues
-*   Test status:
-
-    *   Linux, Mac: https://travis-ci.org/pallets/click
-    *   Windows: https://ci.appveyor.com/project/pallets/click
-
-*   Test coverage: https://codecov.io/gh/pallets/click
+*   Test status: https://dev.azure.com/pallets/click/_build
+*   Official chat: https://discord.gg/t6rrQZH
