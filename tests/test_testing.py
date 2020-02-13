@@ -12,7 +12,7 @@ from asyncclick._compat import WIN
 from io import BytesIO as ReasonableBytesIO
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_runner():
     @click.command()
     def test():
@@ -36,7 +36,7 @@ async def test_runner():
     assert result.output == 'Hello World!\nHello World!\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_runner_with_stream():
     @click.command()
     def test():
@@ -60,7 +60,7 @@ async def test_runner_with_stream():
     assert result.output == 'Hello World!\nHello World!\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_prompts():
     @click.command()
     @click.option('--foo', prompt=True)
@@ -83,7 +83,7 @@ async def test_prompts():
     assert result.output == 'Foo: \nfoo=wau wau\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_getchar():
     @click.command()
     def continue_it():
@@ -95,7 +95,7 @@ async def test_getchar():
     assert result.output == 'y\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_catch_exceptions():
     class CustomError(Exception):
         pass
@@ -121,7 +121,7 @@ async def test_catch_exceptions():
 
 
 @pytest.mark.skipif(WIN, reason='Test does not make sense on Windows.')
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_with_color():
     @click.command()
     def cli():
@@ -138,7 +138,7 @@ async def test_with_color():
     assert not result.exception
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_with_color_but_pause_not_blocking():
     @click.command()
     def cli():
@@ -150,7 +150,7 @@ async def test_with_color_but_pause_not_blocking():
     assert result.output == ''
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_exit_code_and_output_from_sys_exit():
     # See issue #362
     @click.command()
@@ -221,7 +221,7 @@ async def test_exit_code_and_output_from_sys_exit():
     assert result.output == 'hello world\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_env():
     @click.command()
     def cli_env():
@@ -240,7 +240,7 @@ async def test_env():
     assert os.environ == env_orig
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_stderr():
     @click.command()
     def cli_stderr():
@@ -272,7 +272,7 @@ async def test_stderr():
     (['--foo', 'one two'], 'one two\n'),
     ('--foo "one two"', 'one two\n'),
 ])
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_args(args, expected_output):
 
     @click.command()
@@ -286,7 +286,7 @@ async def test_args(args, expected_output):
     assert result.output == expected_output
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_setting_prog_name_in_extra():
     @click.command()
     def cli():

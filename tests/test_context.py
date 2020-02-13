@@ -294,7 +294,7 @@ def test_make_pass_decorator_args(runner):
     assert result.output == 'foocmd\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_exit_not_standalone():
     @click.command()
     @click.pass_context
