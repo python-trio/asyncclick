@@ -52,7 +52,7 @@ def fast_exit(code):
     os._exit(code)
 
 
-def _bashcomplete(cmd, prog_name, complete_var=None):
+async def _bashcomplete(cmd, prog_name, complete_var=None):
     """Internal handler for the bash completion support."""
     if complete_var is None:
         complete_var = '_%s_COMPLETE' % (prog_name.replace('-', '_')).upper()
@@ -61,7 +61,7 @@ def _bashcomplete(cmd, prog_name, complete_var=None):
         return
 
     from ._bashcomplete import bashcomplete
-    if bashcomplete(cmd, prog_name, complete_var, complete_instr):
+    if await bashcomplete(cmd, prog_name, complete_var, complete_instr):
         fast_exit(1)
 
 
@@ -748,7 +748,7 @@ class BaseCommand(object):
         # Hook for the Bash completion.  This only activates if the Bash
         # completion is actually enabled, otherwise this is quite a fast
         # noop.
-        _bashcomplete(self, prog_name, complete_var)
+        await _bashcomplete(self, prog_name, complete_var)
 
         try:
             try:
