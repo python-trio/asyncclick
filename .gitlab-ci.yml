@@ -10,13 +10,6 @@ before_script:
   - "git clone https://gitlab.noris.net/${CI_PROJECT_NAMESPACE}/sourcemgr ../.mgr"
   - "(cd ../.mgr; git show --oneline)"
   - "/bin/bash -x ../.mgr/gitlab-ci"
-stretch:
-  only: 
-    - tags
-  image: 'docker-registry.noris.net/oci/debbuilder:stretch'
-  script:
-    - 'dpkg-buildpackage -b -k${CI_GPG_KEYID}'
-    - dput -d achmed ../*.changes
 buster:
   only:
     - tags
