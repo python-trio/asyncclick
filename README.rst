@@ -55,7 +55,7 @@ What does it look like? Here is an example of a simple Click program:
         for x in range(count):
             if x: await anyio.sleep(0.1)
             click.echo("Hello, %s!" % name)
-    
+
     if __name__ == '__main__':
         hello(_anyio_backend="trio")  # or asyncio, or curio
 
@@ -99,11 +99,5 @@ These links point to the original, non-async-enabled, version of ``Click``.
 *   Releases: https://pypi.org/project/click/
 *   Code: https://github.com/pallets/click
 *   Issue tracker: https://github.com/pallets/click/issues
-*   Test status:
-
-    *   Linux, Mac: https://travis-ci.org/pallets/click
-    *   Windows: https://ci.appveyor.com/project/pallets/click
-
-*   Test coverage: https://codecov.io/gh/pallets/click
-
-The issue tracker for the async version is at https://github.com/click-contrib/asyncclick/issues .
+*   Test status: https://dev.azure.com/pallets/click/_build
+*   Official chat: https://discord.gg/t6rrQZH

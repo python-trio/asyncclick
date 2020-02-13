@@ -7,10 +7,11 @@ from weakref import WeakKeyDictionary
 
 
 CYGWIN = sys.platform.startswith('cygwin')
+MSYS2 = sys.platform.startswith('win') and ('GCC' in sys.version)
 # Determine local App Engine environment, per Google's own suggestion
 APP_ENGINE = ('APPENGINE_RUNTIME' in os.environ and
-              'Development/' in os.environ['SERVER_SOFTWARE'])
-WIN = sys.platform.startswith('win') and not APP_ENGINE
+              'Development/' in os.environ.get('SERVER_SOFTWARE', ''))
+WIN = sys.platform.startswith('win') and not APP_ENGINE and not MSYS2
 DEFAULT_COLUMNS = 80
 
 
@@ -449,11 +450,23 @@ def strip_ansi(value):
     return _ansi_re.sub('', value)
 
 
+def _is_jupyter_kernel_output(stream):
+    if WIN:
+        # TODO: Couldn't test on Windows, should't try to support until
+        # someone tests the details wrt colorama.
+        return
+
+    while isinstance(stream, (_FixupStream, _NonClosingTextIOWrapper)):
+        stream = stream._stream
+
+    return stream.__class__.__module__.startswith("ipykernel.")
+
+
 def should_strip_ansi(stream=None, color=None):
     if color is None:
         if stream is None:
             stream = sys.stdin
-        return not isatty(stream)
+        return not isatty(stream) and not _is_jupyter_kernel_output(stream)
     return not color
 
 
