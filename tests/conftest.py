@@ -11,7 +11,7 @@ class SyncCliRunner(CliRunner):
             return fn(*a,**k)
         if k:
             fn = partial(fn, **k)
-        return anyio.run(fn, *a)
+        return anyio.run(fn, *a, backend="trio")
 
 @pytest.fixture(scope='function')
 def runner(request):
