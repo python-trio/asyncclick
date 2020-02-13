@@ -20,7 +20,7 @@ def test_other_command_invoke(runner):
     assert result.output == '42\n'
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_other_command_forward(runner):
     cli = click.Group()
 

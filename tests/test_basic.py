@@ -24,7 +24,7 @@ def test_basic_functionality(runner):
     assert result.exit_code == 0
 
 
-@pytest.mark.trio
+@pytest.mark.anyio
 async def test_return_values():
     @click.command()
     def cli():
