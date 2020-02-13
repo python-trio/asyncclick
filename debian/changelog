@@ -1,3 +1,9 @@
+asyncclick (1:7.0.90-1) unstable; urgency=medium
+
+  * Merge current 7.1
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Thu, 13 Feb 2020 12:27:50 +0100
+
 asyncclick (1:7.0.4-2) unstable; urgency=medium
 
   * move to anyio
