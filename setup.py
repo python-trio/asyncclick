@@ -27,7 +27,6 @@ setup(
                 'powerful command line utilities.',
     tests_require=[
         'pytest',
-        'pytest-trio',
     ],
     extras_require={
         'dev': [
@@ -66,6 +65,6 @@ setup(
         "Programming Language :: Python :: 3.7",
     ],
     install_requires=[
-        'anyio',
+        'anyio>=2',
     ],
 )
