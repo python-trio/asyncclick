@@ -37,7 +37,7 @@ async def test_other_command_forward(runner):
         await ctx.forward(test)
         await ctx.invoke(test, count=42)
 
-    result = await runner.invoke(cli, ["dist"])
+    result = await runner.invoke(cli, ["dist"], _sync=True)
     if result.exception:
         raise result.exception
     assert result.output == "Count: 1\nCount: 42\n"

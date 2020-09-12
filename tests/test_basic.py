@@ -50,7 +50,7 @@ async def test_return_values():
         return 42
 
     async with await cli.make_context("foo", []) as ctx:
-        rv = cli.invoke(ctx)
+        rv = await cli.invoke(ctx)
         assert rv == 42
 
 

@@ -200,7 +200,7 @@ async def test_chaining():
         "carg2",
     ]
     assert await choices_without_help(cli, ["cliarg1", "asub", "csub"], "-") == ["--csub-opt"]
-    assert choices_with_help(cli, ["cliarg1", "asub"], "b") == [("bsub", "bsub help")]
+    assert await choices_with_help(cli, ["cliarg1", "asub"], "b") == [("bsub", "bsub help")]
 
 
 @pytest.mark.anyio
@@ -228,7 +228,7 @@ async def test_option_choice():
     def cli():
         pass
 
-    assert choices_with_help(cli, [], "-") == [
+    assert await choices_with_help(cli, [], "-") == [
         ("--opt1", "opt1 help"),
         ("--opt2", None),
         ("--opt3", None),
@@ -387,7 +387,7 @@ async def test_long_chain_choice():
     def dsub():
         pass
 
-    assert choices_with_help(cli, ["sub", "subarg1"], "") == [
+    assert await choices_with_help(cli, ["sub", "subarg1"], "") == [
         ("bsub", "bsub help"),
         ("csub", ""),
     ]

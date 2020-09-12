@@ -1272,7 +1272,7 @@ class MultiCommand(Command):
             # list (which means that no subcommand actually was executed).
             if self.invoke_without_command:
                 if not self.chain:
-                    return Command.invoke(self, ctx)
+                    return await Command.invoke(self, ctx)
                 async with ctx:
                     await Command.invoke(self, ctx)
                     return await _process_result([])
