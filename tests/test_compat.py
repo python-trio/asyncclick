@@ -29,7 +29,7 @@ def test_bash_func_name():
 
 
 def test_zsh_func_name():
-    asyncfrom click._bashcomplete import get_completion_script
+    from asyncclick._bashcomplete import get_completion_script
 
     script = get_completion_script("foo-bar", "_COMPLETE_VAR", "zsh").strip()
     assert script.startswith("#compdef foo-bar")
