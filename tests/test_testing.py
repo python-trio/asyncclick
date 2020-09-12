@@ -4,7 +4,6 @@ import sys
 import pytest
 
 import asyncclick as click
-from asyncclick._compat import PY2
 from asyncclick._compat import WIN
 from asyncclick.testing import CliRunner
 

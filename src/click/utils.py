@@ -10,7 +10,6 @@ from ._compat import get_filesystem_encoding
 from ._compat import get_streerror
 from ._compat import is_bytes
 from ._compat import open_stream
-from ._compat import PY2
 from ._compat import should_strip_ansi
 from ._compat import string_types
 from ._compat import strip_ansi

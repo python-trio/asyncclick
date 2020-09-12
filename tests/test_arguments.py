@@ -4,7 +4,6 @@ import sys
 import pytest
 
 import asyncclick as click
-from click._compat import PY2
 from click._compat import text_type
 
 PY2 = False  # churn

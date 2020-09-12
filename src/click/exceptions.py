@@ -152,12 +152,6 @@ class MissingParameter(BadParameter):
         else:
             return self.message
 
-    if PY2:
-        __unicode__ = __str__
-
-        def __str__(self):
-            return self.__unicode__().encode("utf-8")
-
 
 class NoSuchOption(UsageError):
     """Raised if click attempted to handle an option that does not

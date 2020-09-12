@@ -380,11 +380,7 @@ def _wrap_io_open(file, mode, encoding, errors):
     else:
         kwargs = {"encoding": encoding, "errors": errors}
 
-    if not PY2 or binary:
-        return io.open(file, mode, **kwargs)
-
-    f = io.open(file, "{}b".format(mode.replace("t", "")))
-    return _make_text_stream(f, **kwargs)
+    return io.open(file, mode, **kwargs)
 
 
 def open_stream(filename, mode="r", encoding=None, errors="strict", atomic=False):
