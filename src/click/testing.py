@@ -1,18 +1,15 @@
-import os
-import sys
-import shutil
-import tempfile
 import contextlib
+import os
 import shlex
+import shutil
+import sys
+import tempfile
 
-from ._compat import iteritems, string_types
-
-
-# If someone wants to vendor click, we want to ensure the
-# correct package is discovered.  Ideally we could use a
-# relative import here but unfortunately Python does not
-# support that.
-clickpkg = sys.modules[__name__.rsplit('.', 1)[0]]
+from . import formatting
+from . import termui
+from . import utils
+from ._compat import iteritems
+from ._compat import string_types
 
 
 import io
@@ -25,7 +22,6 @@ def debug():
     pdb.Pdb(stdin=stdin, stdout=stdout).set_trace(sys._getframe().f_back)
 
 class EchoingStdin(object):
-
     def __init__(self, input, output):
         self._input = input
         self._output = output
@@ -55,14 +51,14 @@ class EchoingStdin(object):
 
 def make_input_stream(input, charset):
     # Is already an input stream.
-    if hasattr(input, 'read'):
+    if hasattr(input, "read"):
         rv = _find_binary_reader(input)
         if rv is not None:
             return rv
-        raise TypeError('Could not find binary reader for input stream.')
+        raise TypeError("Could not find binary reader for input stream.")
 
     if input is None:
-        input = b''
+        input = b""
     elif not isinstance(input, bytes):
         input = input.encode(charset)
     return io.BytesIO(input)
@@ -71,13 +67,14 @@ def make_input_stream(input, charset):
 class Result(object):
     """Holds the captured result of an invoked CLI script."""
 
-    def __init__(self, runner, stdout_bytes, stderr_bytes, exit_code,
-                 exception, exc_info=None):
+    def __init__(
+        self, runner, stdout_bytes, stderr_bytes, exit_code, exception, exc_info=None
+    ):
         #: The runner that created the result
         self.runner = runner
         #: The standard output as bytes.
         self.stdout_bytes = stdout_bytes
-        #: The standard error as bytes, or False(y) if not available
+        #: The standard error as bytes, or None if not available
         self.stderr_bytes = stderr_bytes
         #: The exit code as integer.
         self.exit_code = exit_code
@@ -94,22 +91,22 @@ class Result(object):
     @property
     def stdout(self):
         """The standard output as unicode string."""
-        return self.stdout_bytes.decode(self.runner.charset, 'replace') \
-            .replace('\r\n', '\n')
+        return self.stdout_bytes.decode(self.runner.charset, "replace").replace(
+            "\r\n", "\n"
+        )
 
     @property
     def stderr(self):
         """The standard error as unicode string."""
-        if not self.stderr_bytes:
+        if self.stderr_bytes is None:
             raise ValueError("stderr not separately captured")
-        return self.stderr_bytes.decode(self.runner.charset, 'replace') \
-            .replace('\r\n', '\n')
-
+        return self.stderr_bytes.decode(self.runner.charset, "replace").replace(
+            "\r\n", "\n"
+        )
 
     def __repr__(self):
-        return '<%s %s>' % (
-            type(self).__name__,
-            self.exception and repr(self.exception) or 'okay',
+        return "<{} {}>".format(
+            type(self).__name__, repr(self.exception) if self.exception else "okay"
         )
 
 
@@ -134,10 +131,9 @@ class CliRunner(object):
                        independently
     """
 
-    def __init__(self, charset=None, env=None, echo_stdin=False,
-                 mix_stderr=True):
+    def __init__(self, charset=None, env=None, echo_stdin=False, mix_stderr=True):
         if charset is None:
-            charset = 'utf-8'
+            charset = "utf-8"
         self.charset = charset
         self.env = env or {}
         self.echo_stdin = echo_stdin
@@ -148,7 +144,7 @@ class CliRunner(object):
         for it.  The default is the `name` attribute or ``"root"`` if not
         set.
         """
-        return cli.name or 'root'
+        return cli.name or "root"
 
     def make_env(self, overrides=None):
         """Returns the environment overrides for invoking a script."""
@@ -183,8 +179,8 @@ class CliRunner(object):
         sys.old_stdin = sys.stdin
         sys.old_stdout = sys.stdout
         sys.old_stderr = sys.stderr
-        old_forced_width = clickpkg.formatting.FORCED_WIDTH
-        clickpkg.formatting.FORCED_WIDTH = 80
+        old_forced_width = formatting.FORCED_WIDTH
+        formatting.FORCED_WIDTH = 80
 
         env = self.make_env(env)
 
@@ -193,12 +189,10 @@ class CliRunner(object):
             if self.echo_stdin:
                 input = EchoingStdin(input, bytes_output)
             input = io.TextIOWrapper(input, encoding=self.charset)
-            sys.stdout = io.TextIOWrapper(
-                bytes_output, encoding=self.charset)
+            sys.stdout = io.TextIOWrapper(bytes_output, encoding=self.charset)
             if not self.mix_stderr:
                 bytes_error = io.BytesIO()
-                sys.stderr = io.TextIOWrapper(
-                    bytes_error, encoding=self.charset)
+                sys.stderr = io.TextIOWrapper(bytes_error, encoding=self.charset)
 
         if self.mix_stderr:
             sys.stderr = sys.stdout
@@ -206,16 +200,16 @@ class CliRunner(object):
         sys.stdin = input
 
         def visible_input(prompt=None):
-            sys.stdout.write(prompt or '')
-            val = input.readline().rstrip('\r\n')
-            sys.stdout.write(val + '\n')
+            sys.stdout.write(prompt or "")
+            val = input.readline().rstrip("\r\n")
+            sys.stdout.write("{}\n".format(val))
             sys.stdout.flush()
             return val
 
         def hidden_input(prompt=None):
-            sys.stdout.write((prompt or '') + '\n')
+            sys.stdout.write("{}\n".format(prompt or ""))
             sys.stdout.flush()
-            return input.readline().rstrip('\r\n')
+            return input.readline().rstrip("\r\n")
 
         def _getchar(echo):
             char = sys.stdin.read(1)
@@ -231,14 +225,14 @@ class CliRunner(object):
                 return not default_color
             return not color
 
-        old_visible_prompt_func = clickpkg.termui.visible_prompt_func
-        old_hidden_prompt_func = clickpkg.termui.hidden_prompt_func
-        old__getchar_func = clickpkg.termui._getchar
-        old_should_strip_ansi = clickpkg.utils.should_strip_ansi
-        clickpkg.termui.visible_prompt_func = visible_input
-        clickpkg.termui.hidden_prompt_func = hidden_input
-        clickpkg.termui._getchar = _getchar
-        clickpkg.utils.should_strip_ansi = should_strip_ansi
+        old_visible_prompt_func = termui.visible_prompt_func
+        old_hidden_prompt_func = termui.hidden_prompt_func
+        old__getchar_func = termui._getchar
+        old_should_strip_ansi = utils.should_strip_ansi
+        termui.visible_prompt_func = visible_input
+        termui.hidden_prompt_func = hidden_input
+        termui._getchar = _getchar
+        utils.should_strip_ansi = should_strip_ansi
 
         old_env = {}
         try:
@@ -267,14 +261,22 @@ class CliRunner(object):
             sys.old_stdout = old_stdout
             sys.old_stderr = old_stderr
             sys.old_stdin = old_stdin
-            clickpkg.termui.visible_prompt_func = old_visible_prompt_func
-            clickpkg.termui.hidden_prompt_func = old_hidden_prompt_func
-            clickpkg.termui._getchar = old__getchar_func
-            clickpkg.utils.should_strip_ansi = old_should_strip_ansi
-            clickpkg.formatting.FORCED_WIDTH = old_forced_width
+            termui.visible_prompt_func = old_visible_prompt_func
+            termui.hidden_prompt_func = old_hidden_prompt_func
+            termui._getchar = old__getchar_func
+            utils.should_strip_ansi = old_should_strip_ansi
+            formatting.FORCED_WIDTH = old_forced_width
 
-    async def invoke(self, cli, args=None, input=None, env=None,
-               catch_exceptions=True, color=False, mix_stderr=False, **extra):
+    async def invoke(
+        self,
+        cli,
+        args=None,
+        input=None,
+        env=None,
+        catch_exceptions=True,
+        color=False,
+        **extra
+    ):
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
         arguments are passed to the :meth:`~clickpkg.Command.main` function of
@@ -331,7 +333,7 @@ class CliRunner(object):
 
                 if not isinstance(exit_code, int):
                     sys.stdout.write(str(exit_code))
-                    sys.stdout.write('\n')
+                    sys.stdout.write("\n")
                     exit_code = 1
 
             except Exception as e:
@@ -343,14 +345,19 @@ class CliRunner(object):
             finally:
                 sys.stdout.flush()
                 stdout = outstreams[0].getvalue()
-                stderr = outstreams[1] and outstreams[1].getvalue()
+                if self.mix_stderr:
+                    stderr = None
+                else:
+                    stderr = outstreams[1].getvalue()
 
-        return Result(runner=self,
-                      stdout_bytes=stdout,
-                      stderr_bytes=stderr,
-                      exit_code=exit_code,
-                      exception=exception,
-                      exc_info=exc_info)
+        return Result(
+            runner=self,
+            stdout_bytes=stdout,
+            stderr_bytes=stderr,
+            exit_code=exit_code,
+            exception=exception,
+            exc_info=exc_info,
+        )
 
     @contextlib.contextmanager
     def isolated_filesystem(self):
@@ -366,5 +373,5 @@ class CliRunner(object):
             os.chdir(cwd)
             try:
                 shutil.rmtree(t)
-            except (OSError, IOError):
+            except (OSError, IOError):  # noqa: B014
                 pass

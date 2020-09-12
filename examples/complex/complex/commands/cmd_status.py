@@ -1,10 +1,11 @@
-import asyncclick as click
 from complex.cli import pass_environment
 
+import asyncclick as click
 
-@click.command('status', short_help='Shows file changes.')
+
+@click.command("status", short_help="Shows file changes.")
 @pass_environment
 def cli(ctx):
     """Shows file changes in the current working directory."""
-    ctx.log('Changed files: none')
-    ctx.vlog('bla bla bla, debug info')
+    ctx.log("Changed files: none")
+    ctx.vlog("bla bla bla, debug info")

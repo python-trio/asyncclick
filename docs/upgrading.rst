@@ -23,6 +23,37 @@ Commands and callbacks may be asynchronous; Click auto-``await``s them.
 
 Support for Python 2.x was dropped.
 
+.. _upgrade-to-7.0:
+
+Upgrading to 7.0
+----------------
+
+Commands that take their name from the decorated function now replace
+underscores with dashes. For example, the Python function ``run_server``
+will get the command name ``run-server`` now. There are a few options
+to address this:
+
+-   To continue with the new behavior, pin your dependency to
+    ``Click>=7`` and update any documentation to use dashes.
+-   To keep existing behavior, add an explicit command name with
+    underscores, like ``@click.command("run_server")``.
+-   To try a name with dashes if the name with underscores was not
+    found, pass a ``token_normalize_func`` to the context:
+
+    .. code-block:: python
+
+        def normalize(name):
+            return name.replace("_", "-")
+
+        @click.group(context_settings={"token_normalize_func": normalize})
+        def group():
+            ...
+
+        @group.command()
+        def run_server():
+            ...
+
+
 .. _upgrade-to-3.2:
 
 Upgrading to 3.2

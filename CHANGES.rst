@@ -1,23 +1,95 @@
 .. currentmodule:: click
 
+Version 7.1.2
+-------------
+
+Released 2020-04-27
+
+-   Revert applying shell quoting to commands for ``echo_with_pager``
+    and ``edit``. This was intended to allows spaces in commands, but
+    caused issues if the string was actually a command and arguments, or
+    on Windows. Instead, the string must be quoted manually as it should
+    appear on the command line. :issue:`1514`
+
+
+Version 7.1.1
+-------------
+
+Released 2020-03-09
+
+-   Fix ``ClickException`` output going to stdout instead of stderr.
+    :issue:`1495`
+
+
 Version 7.1
 -----------
 
-Unreleased
+Released 2020-03-09
 
--   Add ``no_args_is_help`` option to ``click.Command``, defaults to
-    False :pr:`1167`
+-   Fix PyPI package name, "click" is lowercase again.
 -   Fix link in ``unicode_literals`` error message. :pr:`1151`
 -   Add support for colored output on UNIX Jupyter notebooks.
     :issue:`1185`
+-   Operations that strip ANSI controls will strip the cursor hide/show
+    sequences. :issue:`1216`
 -   Remove unused compat shim for ``bytes``. :pr:`1195`
--   Expand unit testing around termui, especially getchar (Windows).
+-   Expand testing around termui, especially getchar on Windows.
     :issue:`1116`
 -   Fix output on Windows Python 2.7 built with MSVC 14. :pr:`1342`
--   Always return of of the passed choices for ``click.Choice``
-    :issue:`1277`, :pr:`1318`
 -   Fix ``OSError`` when running in MSYS2. :issue:`1338`
+-   Fix ``OSError`` when redirecting to ``NUL`` stream on Windows.
+    :issue:`1065`
+-   Fix memory leak when parsing Unicode arguments on Windows.
+    :issue:`1136`
 -   Fix error in new AppEngine environments. :issue:`1462`
+-   Always return one of the passed choices for ``click.Choice``
+    :issue:`1277`, :pr:`1318`
+-   Add ``no_args_is_help`` option to ``click.Command``, defaults to
+    False :pr:`1167`
+-   Add ``show_defaults`` parameter to ``Context`` to enable showing
+    defaults globally. :issue:`1018`
+-   Handle ``env MYPATH=''`` as though the option were not passed.
+    :issue:`1196`
+-   It is once again possible to call ``next(bar)`` on an active
+    progress bar instance. :issue:`1125`
+-   ``open_file`` with ``atomic=True`` retains permissions of existing
+    files and respects the current umask for new files. :issue:`1376`
+-   When using the test ``CliRunner`` with ``mix_stderr=False``, if
+    ``result.stderr`` is empty it will not raise a ``ValueError``.
+    :issue:`1193`
+-   Remove the unused ``mix_stderr`` parameter from
+    ``CliRunner.invoke``. :issue:`1435`
+-   Fix ``TypeError`` raised when using bool flags and specifying
+    ``type=bool``. :issue:`1287`
+-   Newlines in option help text are replaced with spaces before
+    re-wrapping to avoid uneven line breaks. :issue:`834`
+-   ``MissingParameter`` exceptions are printable in the Python
+    interpreter. :issue:`1139`
+-   Fix how default values for file-type options are shown during
+    prompts. :issue:`914`
+-   Fix environment variable automatic generation for commands
+    containing ``-``. :issue:`1253`
+-   Option help text replaces newlines with spaces when rewrapping, but
+    preserves paragraph breaks, fixing multiline formatting.
+    :issue:`834, 1066, 1397`
+-   Option help text that is wrapped adds an extra newline at the end to
+    distinguish it from the next option. :issue:`1075`
+-   Consider ``sensible-editor`` when determining the editor to use for
+    ``click.edit()``. :pr:`1469`
+-   Arguments to system calls such as the executable path passed to
+    ``click.edit`` can contains spaces. :pr:`1470`
+-   Add ZSH completion autoloading and error handling. :issue:`1348`
+-   Add a repr to ``Command``, ``Group``, ``Option``, and ``Argument``,
+    showing the name for friendlier debugging. :issue:`1267`
+-   Completion doesn't consider option names if a value starts with
+    ``-`` after the ``--`` separator. :issue:`1247`
+-   ZSH completion escapes special characters in values. :pr:`1418`
+-   Add completion support for Fish shell. :pr:`1423`
+-   Decoding bytes option values falls back to UTF-8 in more cases.
+    :pr:`1468`
+-   Make the warning about old 2-arg parameter callbacks a deprecation
+    warning, to be removed in 8.0. This has been a warning since Click
+    2.0. :pr:`1492`
 
 
 Version 7.0

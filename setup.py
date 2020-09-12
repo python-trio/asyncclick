@@ -1,7 +1,7 @@
 import io
 import re
-import os
-import ast
+
+from setuptools import find_packages
 from setuptools import setup
 
 with io.open("README.rst", "rt", encoding="utf8") as f:
@@ -10,8 +10,8 @@ with io.open("README.rst", "rt", encoding="utf8") as f:
 if os.path.isdir("click") and not os.path.exists("asyncclick"):
     os.symlink("click","asyncclick")
 
-with io.open("click/__init__.py", "rt", encoding="utf8") as f:
-    version = re.search(r"__version__ = \'(.*?)\'", f.read()).group(1)
+with io.open("src/click/__init__.py", "rt", encoding="utf8") as f:
+    version = re.search(r'__version__ = "(.*?)"', f.read()).group(1)
 
 setup(
     name='asyncclick',
@@ -54,16 +54,23 @@ setup(
         "Code": "https://github.com/python-trio/asyncclick",
         "Issue tracker": "https://github.com/python-trio/asyncclick/issues",
     },
+    license="BSD-3-Clause",
+    maintainer="Pallets",
+    maintainer_email="contact@palletsprojects.com",
+    description="Composable command line interface toolkit",
+    long_description=readme,
+    packages=find_packages("src"),
+    package_dir={"": "src"},
     include_package_data=True,
     python_requires=">=3.6",
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
-        'Operating System :: OS Independent',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: BSD License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
     ],
     install_requires=[

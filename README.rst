@@ -32,14 +32,12 @@ Install and update using `pip`_:
 
     $ pip install asyncclick
 
-AsyncClick supports Python 3.5 and newer, and PyPy3.
+AsyncClick supports Python 3.6 and newer, and PyPy3.
 
 .. _pip: https://pip.pypa.io/en/stable/quickstart/
 
 A Simple Example
 ----------------
-
-What does it look like? Here is an example of a simple Click program:
 
 .. code-block:: python
 
@@ -48,13 +46,12 @@ What does it look like? Here is an example of a simple Click program:
     
     @click.command()
     @click.option("--count", default=1, help="Number of greetings.")
-    @click.option("--name", prompt="Your name",
-                  help="The person to greet.")
+    @click.option("--name", prompt="Your name", help="The person to greet.")
     async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
-        for x in range(count):
+        for _ in range(count):
             if x: await anyio.sleep(0.1)
-            click.echo("Hello, %s!" % name)
+            click.echo(f"Hello, {name}!")
 
     if __name__ == '__main__':
         hello(_anyio_backend="trio")  # or asyncio, or curio
@@ -62,8 +59,6 @@ What does it look like? Here is an example of a simple Click program:
 .. note::
     AsyncClick automagically starts an anyio event loop and runs your
     code asynchronously.
-
-And what it looks like when run:
 
 .. code-block:: text
 
@@ -91,13 +86,16 @@ charity of your choice and tell me that you've done so. ;-)
 Links
 -----
 
+``AsyncClick`` is sufficiently minimal to not have its own web page.
+
+-   Code: https://github.com/M-o-a-T/asyncclick
+
 These links point to the original, non-async-enabled, version of ``Click``.
 
-*   Website: https://palletsprojects.com/p/click/
-*   Documentation: https://click.palletsprojects.com/
-*   License: `BSD <https://github.com/pallets/click/blob/master/LICENSE.rst>`_
-*   Releases: https://pypi.org/project/click/
-*   Code: https://github.com/pallets/click
-*   Issue tracker: https://github.com/pallets/click/issues
-*   Test status: https://dev.azure.com/pallets/click/_build
-*   Official chat: https://discord.gg/t6rrQZH
+-   Website: https://palletsprojects.com/p/click/
+-   Documentation: https://click.palletsprojects.com/
+-   Releases: https://pypi.org/project/click/
+-   Code: https://github.com/pallets/click
+-   Issue tracker: https://github.com/pallets/click/issues
+-   Test status: https://dev.azure.com/pallets/click/_build
+-   Official chat: https://discord.gg/t6rrQZH
