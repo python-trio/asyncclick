@@ -7,10 +7,7 @@ from setuptools import setup
 with io.open("README.rst", "rt", encoding="utf8") as f:
     readme = f.read()
 
-if os.path.isdir("click") and not os.path.exists("asyncclick"):
-    os.symlink("click","asyncclick")
-
-with io.open("src/click/__init__.py", "rt", encoding="utf8") as f:
+with io.open("asyncsrc/asyncclick/__init__.py", "rt", encoding="utf8") as f:
     version = re.search(r'__version__ = "(.*?)"', f.read()).group(1)
 
 setup(
@@ -59,8 +56,8 @@ setup(
     maintainer_email="contact@palletsprojects.com",
     description="Composable command line interface toolkit",
     long_description=readme,
-    packages=find_packages("src"),
-    package_dir={"": "src"},
+    packages=find_packages("asyncsrc"),
+    package_dir={"": "asyncsrc"},
     include_package_data=True,
     python_requires=">=3.6",
     classifiers=[
