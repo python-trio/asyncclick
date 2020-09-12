@@ -94,7 +94,7 @@ def test_bytes_args(runner, monkeypatch):
         monkeypatch.setattr(sys, "getfilesystemencoding", lambda: "ANSI_X3.4-1968")
         monkeypatch.setattr(sys, "getdefaultencoding", lambda: "ascii")
     else:
-        monkeypatch.setattr(sys.stdin, "encoding", "utf-8")
+        # monkeypatch.setattr(sys.stdin, "encoding", "utf-8")
         monkeypatch.setattr(sys, "getfilesystemencoding", lambda: "utf-8")
         monkeypatch.setattr(sys, "getdefaultencoding", lambda: "utf-8")
 
