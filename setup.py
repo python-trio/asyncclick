@@ -7,7 +7,7 @@ from setuptools import setup
 with io.open("README.rst", "rt", encoding="utf8") as f:
     readme = f.read()
 
-with io.open("asyncsrc/asyncclick/__init__.py", "rt", encoding="utf8") as f:
+with io.open("asyncclick/__init__.py", "rt", encoding="utf8") as f:
     version = re.search(r'__version__ = "(.*?)"', f.read()).group(1)
 
 setup(
@@ -23,10 +23,8 @@ setup(
     packages=['asyncclick'],
     #maintainer='Pallets team',
     #maintainer_email='contact@palletsprojects.com',
-    long_description=readme,
     description='A simple anyio-compatible fork of Click, for '
                 'powerful command line utilities.',
-    license='BSD',
     tests_require=[
         'pytest',
         'pytest-trio',
@@ -54,10 +52,7 @@ setup(
     license="BSD-3-Clause",
     maintainer="Pallets",
     maintainer_email="contact@palletsprojects.com",
-    description="Composable command line interface toolkit",
     long_description=readme,
-    packages=find_packages("asyncsrc"),
-    package_dir={"": "asyncsrc"},
     include_package_data=True,
     python_requires=">=3.6",
     classifiers=[
