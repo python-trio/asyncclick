@@ -88,7 +88,7 @@ Links
 
 ``AsyncClick`` is sufficiently minimal to not have its own web page.
 
--   Code: https://github.com/M-o-a-T/asyncclick
+-   Code: https://github.com/python-trio/asyncclick
 
 These links point to the original, non-async-enabled, version of ``Click``.
 
