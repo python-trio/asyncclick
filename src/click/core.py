@@ -859,10 +859,7 @@ class BaseCommand(object):
     def __call__(self, *args, _anyio_backend=None, **kwargs):
         """Alias for :meth:`main`."""
         main = self.main
-        if _anyio_backend is None:
-            import asyncclick
-            _anyio_backend = asyncclick.anyio_backend
-        return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
+        return anyio.run(self._main, main, args, kwargs, **({"backend":_anyio_backend} if _anyio_backend is not None else {}))
     
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)
