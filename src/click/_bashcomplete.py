@@ -2,6 +2,7 @@ import copy
 import os
 import re
 import anyio
+from inspect import iscoroutine
 
 from .core import Argument
 from .core import MultiCommand
@@ -208,7 +209,7 @@ def is_incomplete_argument(current_params, cmd_param):
     return False
 
 
-def get_user_autocompletions(ctx, args, incomplete, cmd_param):
+async def get_user_autocompletions(ctx, args, incomplete, cmd_param):
     """
     :param ctx: context associated with the parsed command
     :param args: full list of args
@@ -226,6 +227,8 @@ def get_user_autocompletions(ctx, args, incomplete, cmd_param):
         dynamic_completions = cmd_param.autocompletion(
             ctx=ctx, args=args, incomplete=incomplete
         )
+        if iscoroutine(dynamic_completions):
+            dynamic_completions = await dynamic_completions
         results = [
             c if isinstance(c, tuple) else (c, None) for c in dynamic_completions
         ]
@@ -312,11 +315,11 @@ async def get_choices(cli, prog_name, args, incomplete):
     # completion for option values from user supplied values
     for param in ctx.command.params:
         if is_incomplete_option(all_args, param):
-            return get_user_autocompletions(ctx, all_args, incomplete, param)
+            return await get_user_autocompletions(ctx, all_args, incomplete, param)
     # completion for argument values from user supplied values
     for param in ctx.command.params:
         if is_incomplete_argument(ctx.params, param):
-            return get_user_autocompletions(ctx, all_args, incomplete, param)
+            return await get_user_autocompletions(ctx, all_args, incomplete, param)
 
     add_subcommand_completions(ctx, incomplete, completions)
     # Sort before returning so that proper ordering can be enforced in custom types.
