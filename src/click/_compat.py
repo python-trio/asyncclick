@@ -537,7 +537,7 @@ if WIN:
     # Windows has a smaller terminal
     DEFAULT_COLUMNS = 79
 
-    from ._winconsole import _get_windows_console_stream, _wrap_std_stream
+    from ._winconsole import _get_windows_console_stream
 
     def _get_argv_encoding():
         import locale
@@ -595,7 +595,6 @@ else:
         return getattr(sys.stdin, "encoding", None) or get_filesystem_encoding()
 
     _get_windows_console_stream = lambda *x: None
-    _wrap_std_stream = lambda *x: None
 
 
 def term_len(x):
