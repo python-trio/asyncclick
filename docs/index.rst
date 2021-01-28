@@ -1,5 +1,5 @@
 Welcome to the AsyncClick Documentation
-==================================
+=======================================
 .. rst-class:: hide-header
 
 .. image:: _static/click-logo.png
