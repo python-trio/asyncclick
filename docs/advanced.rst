@@ -178,7 +178,7 @@ Example:
     @cli.command()
     @click.option('--count', default=1)
     @click.pass_context
-    def dist(ctx, count):
+    async def dist(ctx, count):
         await ctx.forward(test)
         await ctx.invoke(test, count=42)
 
