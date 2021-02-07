@@ -757,7 +757,7 @@ class Command(BaseCommand):
                  params=None, help=None, epilog=None, short_help=None,
                  options_metavar='[OPTIONS]', add_help_option=True,
                  hidden=False):
-        BaseCommand.__init__(self, name, context_settings)
+        super().__init__(self, name, context_settings)
         #: the callback to execute when the command fires.  This might be
         #: `None` in which case nothing happens.
         self.callback = callback
@@ -934,7 +934,7 @@ class MultiCommand(Command):
     def __init__(self, name=None, invoke_without_command=False,
                  no_args_is_help=None, subcommand_metavar=None,
                  chain=False, result_callback=None, **attrs):
-        Command.__init__(self, name, **attrs)
+        super().__init__(self, name, **attrs)
         if no_args_is_help is None:
             no_args_is_help = not invoke_without_command
         self.no_args_is_help = no_args_is_help
@@ -957,12 +957,12 @@ class MultiCommand(Command):
                                        'have optional arguments.')
 
     def collect_usage_pieces(self, ctx):
-        rv = Command.collect_usage_pieces(self, ctx)
+        rv = super().collect_usage_pieces(self, ctx)
         rv.append(self.subcommand_metavar)
         return rv
 
     def format_options(self, ctx, formatter):
-        Command.format_options(self, ctx, formatter)
+        super().format_options(self, ctx, formatter)
         self.format_commands(ctx, formatter)
 
     def resultcallback(self, replace=False):
@@ -1027,7 +1027,7 @@ class MultiCommand(Command):
             echo(ctx.get_help(), color=ctx.color)
             ctx.exit()
 
-        rest = Command.parse_args(self, ctx, args)
+        rest = super().parse_args(self, ctx, args)
         if self.chain:
             ctx.protected_args = rest
             ctx.args = []
@@ -1052,9 +1052,9 @@ class MultiCommand(Command):
             # list (which means that no subcommand actually was executed).
             if self.invoke_without_command:
                 if not self.chain:
-                    return Command.invoke(self, ctx)
+                    return super().invoke(self, ctx)
                 with ctx:
-                    Command.invoke(self, ctx)
+                    super().invoke(self, ctx)
                     return _process_result([])
             ctx.fail('Missing command.')
 
@@ -1072,7 +1072,7 @@ class MultiCommand(Command):
             with ctx:
                 cmd_name, cmd, args = self.resolve_command(ctx, args)
                 ctx.invoked_subcommand = cmd_name
-                Command.invoke(self, ctx)
+                super().invoke(self, ctx)
                 sub_ctx = cmd.make_context(cmd_name, args, parent=ctx)
                 with sub_ctx:
                     return _process_result(sub_ctx.command.invoke(sub_ctx))
@@ -1084,7 +1084,7 @@ class MultiCommand(Command):
         # but nothing else.
         with ctx:
             ctx.invoked_subcommand = args and '*' or None
-            Command.invoke(self, ctx)
+            super().invoke(self, ctx)
 
             # Otherwise we make every single context and invoke them in a
             # chain.  In that case the return value to the result processor
@@ -1151,7 +1151,7 @@ class Group(MultiCommand):
     """
 
     def __init__(self, name=None, commands=None, **attrs):
-        MultiCommand.__init__(self, name, **attrs)
+        super().__init__(self, name, **attrs)
         #: the registered subcommands by their exported names.
         self.commands = commands or {}
 
@@ -1204,7 +1204,7 @@ class CommandCollection(MultiCommand):
     """
 
     def __init__(self, name=None, sources=None, **attrs):
-        MultiCommand.__init__(self, name, **attrs)
+        super().__init__(self, name, **attrs)
         #: The list of registered multi commands.
         self.sources = sources or []
 
@@ -1472,7 +1472,7 @@ class Option(Parameter):
                  multiple=False, count=False, allow_from_autoenv=True,
                  type=None, help=None, hidden=False, show_choices=True, **attrs):
         default_is_missing = attrs.get('default', _missing) is _missing
-        Parameter.__init__(self, param_decls, type=type, **attrs)
+        super().__init__(self, param_decls, type=type, **attrs)
 
         if prompt is True:
             prompt_text = self.name.replace('_', ' ').capitalize()
@@ -1652,7 +1652,7 @@ class Option(Parameter):
                 if param.name == self.name and param.default:
                     return param.flag_value
             return None
-        return Parameter.get_default(self, ctx)
+        return super().get_default(self, ctx)
 
     def prompt_for_value(self, ctx):
         """This is an alternative flow that can be activated in the full
@@ -1674,7 +1674,7 @@ class Option(Parameter):
                       value_proc=lambda x: self.process_value(ctx, x))
 
     def resolve_envvar_value(self, ctx):
-        rv = Parameter.resolve_envvar_value(self, ctx)
+        rv = super().resolve_envvar_value(self, ctx)
         if rv is not None:
             return rv
         if self.allow_from_autoenv and \
@@ -1697,7 +1697,7 @@ class Option(Parameter):
         if value is None and self.prompt is not None \
            and not ctx.resilient_parsing:
             return self.prompt_for_value(ctx)
-        return Parameter.full_process_value(self, ctx, value)
+        return super().full_process_value(self, ctx, value)
 
 
 class Argument(Parameter):
@@ -1715,7 +1715,7 @@ class Argument(Parameter):
                 required = False
             else:
                 required = attrs.get('nargs', 1) > 0
-        Parameter.__init__(self, param_decls, required=required, **attrs)
+        super().__init__(self, param_decls, required=required, **attrs)
         if self.default is not None and self.nargs < 0:
             raise TypeError('nargs=-1 in combination with a default value '
                             'is not supported.')

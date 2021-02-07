@@ -121,7 +121,7 @@ def test_base_command(runner):
     class OptParseCommand(click.BaseCommand):
 
         def __init__(self, name, parser, callback):
-            click.BaseCommand.__init__(self, name)
+            super().__init__(self, name)
             self.parser = parser
             self.callback = callback
 
