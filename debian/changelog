@@ -1,3 +1,9 @@
+asyncclick (1:8.0.0a2+anyio.1-2) unstable; urgency=medium
+
+  * Only package asyncclick
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sun, 07 Feb 2021 16:11:02 +0100
+
 asyncclick (1:8.0.0a2+anyio.1-1) unstable; urgency=medium
 
   * Merge current 8.0 alpha
