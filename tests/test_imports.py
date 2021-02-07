@@ -6,10 +6,7 @@ from asyncclick._compat import WIN
 
 
 IMPORT_TEST = b"""\
-try:
-    import __builtin__ as builtins
-except ImportError:
-    import builtins
+import builtins
 
 found_imports = set()
 real_import = builtins.__import__
@@ -48,7 +45,7 @@ ALLOWED_IMPORTS = {
     "errno",
     "fcntl",
     "datetime",
-    "pipes",
+    "enum",
 }
 
 if WIN:
@@ -60,12 +57,10 @@ def test_light_imports():
         [sys.executable, "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
     )
     rv = c.communicate(IMPORT_TEST)[0]
-
-    if sys.version_info[0] != 2:
-        rv = rv.decode("utf-8")
+    rv = rv.decode("utf-8")
     imported = json.loads(rv)
 
     for module in imported:
-        if module == "click" or module.startswith("click."):
+        if module == "asyncclick" or module.startswith("asyncclick."):
             continue
         assert module in ALLOWED_IMPORTS

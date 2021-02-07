@@ -1,18 +1,20 @@
 import os
+import pathlib
 import stat
 import sys
+from io import StringIO
 
 import pytest
 
 import asyncclick as click
 import asyncclick._termui_impl
 import asyncclick.utils
-from click._compat import WIN
+from asyncclick._compat import WIN
 
 
 def test_echo(runner):
     with runner.isolation() as outstreams:
-        click.echo(u"\N{SNOWMAN}")
+        click.echo("\N{SNOWMAN}")
         click.echo(b"\x44\x44")
         click.echo(42, nl=False)
         click.echo(b"a", nl=False)
@@ -20,19 +22,7 @@ def test_echo(runner):
         bytes = outstreams[0].getvalue().replace(b"\r\n", b"\n")
         assert bytes == b"\xe2\x98\x83\nDD\n42ax"
 
-    # If we are in Python 2, we expect that writing bytes into a string io
-    # does not do anything crazy.  In Python 3
-    if sys.version_info[0] == 2:
-        import StringIO
-
-        sys.stdout = x = StringIO.StringIO()
-        try:
-            click.echo("\xf6")
-        finally:
-            sys.stdout = sys.__stdout__
-        assert x.getvalue() == "\xf6\n"
-
-    # And in any case, if wrapped, we expect bytes to survive.
+    # if wrapped, we expect bytes to survive.
     @click.command()
     def cli():
         click.echo(b"\xf6")
@@ -50,8 +40,8 @@ def test_echo_custom_file():
     import io
 
     f = io.StringIO()
-    click.echo(u"hello", file=f)
-    assert f.getvalue() == u"hello\n"
+    click.echo("hello", file=f)
+    assert f.getvalue() == "hello\n"
 
 
 @pytest.mark.parametrize(
@@ -73,6 +63,8 @@ def test_echo_custom_file():
         ({"bg": "magenta"}, "\x1b[45mx y\x1b[0m"),
         ({"bg": "cyan"}, "\x1b[46mx y\x1b[0m"),
         ({"bg": "white"}, "\x1b[47mx y\x1b[0m"),
+        ({"bg": 91}, "\x1b[48;5;91mx y\x1b[0m"),
+        ({"bg": (135, 0, 175)}, "\x1b[48;2;135;0;175mx y\x1b[0m"),
         ({"blink": True}, "\x1b[5mx y\x1b[0m"),
         ({"underline": True}, "\x1b[4mx y\x1b[0m"),
         ({"bold": True}, "\x1b[1mx y\x1b[0m"),
@@ -92,14 +84,12 @@ def test_unstyle_other_ansi(text, expect):
 def test_filename_formatting():
     assert click.format_filename(b"foo.txt") == "foo.txt"
     assert click.format_filename(b"/x/foo.txt") == "/x/foo.txt"
-    assert click.format_filename(u"/x/foo.txt") == "/x/foo.txt"
-    assert click.format_filename(u"/x/foo.txt", shorten=True) == "foo.txt"
+    assert click.format_filename("/x/foo.txt") == "/x/foo.txt"
+    assert click.format_filename("/x/foo.txt", shorten=True) == "foo.txt"
 
     # filesystem encoding on windows permits this.
     if not WIN:
-        assert (
-            click.format_filename(b"/x/foo\xff.txt", shorten=True) == u"foo\ufffd.txt"
-        )
+        assert click.format_filename(b"/x/foo\xff.txt", shorten=True) == "foo\ufffd.txt"
 
 
 def test_prompts(runner):
@@ -204,31 +194,34 @@ def test_echo_color_flag(monkeypatch, capfd):
 
     click.echo(styled_text, color=False)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(text)
+    assert out == f"{text}\n"
 
     click.echo(styled_text, color=True)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(styled_text)
+    assert out == f"{styled_text}\n"
 
     isatty = True
     click.echo(styled_text)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(styled_text)
+    assert out == f"{styled_text}\n"
 
     isatty = False
     click.echo(styled_text)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(text)
+    assert out == f"{text}\n"
+
+
+def test_prompt_cast_default(capfd, monkeypatch):
+    monkeypatch.setattr(sys, "stdin", StringIO("\n"))
+    value = click.prompt("value", default="100", type=int)
+    capfd.readouterr()
+    assert type(value) is int
 
 
 @pytest.mark.skipif(WIN, reason="Test too complex to make work windows.")
 def test_echo_writing_to_standard_error(capfd, monkeypatch):
     def emulate_input(text):
         """Emulate keyboard input."""
-        if sys.version_info[0] == 2:
-            from StringIO import StringIO
-        else:
-            from io import StringIO
         monkeypatch.setattr(sys, "stdin", StringIO(text))
 
     click.echo("Echo to standard output")
@@ -277,6 +270,12 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     out, err = capfd.readouterr()
     assert out == ""
     assert err == "Pause to stderr\n"
+
+
+def test_echo_with_capsys(capsys):
+    click.echo("Capture me.")
+    out, err = capsys.readouterr()
+    assert out == "Capture me.\n"
 
 
 def test_open_file(runner):
@@ -394,3 +393,32 @@ def test_iter_lazyfile(tmpdir):
         with asyncclick.utils.LazyFile(f.name) as lf:
             for e_line, a_line in zip(expected, lf):
                 assert e_line == a_line.strip()
+
+
+class MockMain:
+    __slots__ = "__package__"
+
+    def __init__(self, package_name):
+        self.__package__ = package_name
+
+
+@pytest.mark.parametrize(
+    ("path", "main", "expected"),
+    [
+        ("example.py", None, "example.py"),
+        (str(pathlib.Path("/foo/bar/example.py")), None, "example.py"),
+        ("example", None, "example"),
+        (
+            str(pathlib.Path("example/__main__.py")),
+            MockMain(".example"),
+            "python -m example",
+        ),
+        (
+            str(pathlib.Path("example/cli.py")),
+            MockMain(".example"),
+            "python -m example.cli",
+        ),
+    ],
+)
+def test_detect_program_name(path, main, expected):
+    assert click.utils._detect_program_name(path, _main=main) == expected

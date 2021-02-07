@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module started out as largely a copy paste from the stdlib's
 optparse module with the features removed that we do not need from
@@ -18,13 +17,21 @@ by the Python Software Foundation. This is limited to code in parser.py.
 Copyright 2001-2006 Gregory P. Ward. All rights reserved.
 Copyright 2002-2006 Python Software Foundation. All rights reserved.
 """
-import re
+# This code uses parts of optparse written by Gregory P. Ward and
+# maintained by the Python Software Foundation.
+# Copyright 2001-2006 Gregory P. Ward
+# Copyright 2002-2006 Python Software Foundation
 from collections import deque
 
 from .exceptions import BadArgumentUsage
 from .exceptions import BadOptionUsage
 from .exceptions import NoSuchOption
 from .exceptions import UsageError
+
+# Sentinel value that indicates an option was passed as a flag without a
+# value but is not a flag option. Option.consume_value uses this to
+# prompt or use the flag_value.
+_flag_needs_value = object()
 
 
 def _unpack_args(args, nargs_spec):
@@ -78,12 +85,6 @@ def _unpack_args(args, nargs_spec):
     return tuple(rv), list(args)
 
 
-def _error_opt_args(nargs, opt):
-    if nargs == 1:
-        raise BadOptionUsage(opt, "{} option requires an argument".format(opt))
-    raise BadOptionUsage(opt, "{} option requires {} arguments".format(opt, nargs))
-
-
 def split_opt(opt):
     first = opt[:1]
     if first.isalnum():
@@ -97,29 +98,44 @@ def normalize_opt(opt, ctx):
     if ctx is None or ctx.token_normalize_func is None:
         return opt
     prefix, opt = split_opt(opt)
-    return prefix + ctx.token_normalize_func(opt)
+    return f"{prefix}{ctx.token_normalize_func(opt)}"
 
 
 def split_arg_string(string):
-    """Given an argument string this attempts to split it into small parts."""
-    rv = []
-    for match in re.finditer(
-        r"('([^'\\]*(?:\\.[^'\\]*)*)'|\"([^\"\\]*(?:\\.[^\"\\]*)*)\"|\S+)\s*",
-        string,
-        re.S,
-    ):
-        arg = match.group().strip()
-        if arg[:1] == arg[-1:] and arg[:1] in "\"'":
-            arg = arg[1:-1].encode("ascii", "backslashreplace").decode("unicode-escape")
-        try:
-            arg = type(string)(arg)
-        except UnicodeError:
-            pass
-        rv.append(arg)
-    return rv
+    """Split an argument string as with :func:`shlex.split`, but don't
+    fail if the string is incomplete. Ignores a missing closing quote or
+    incomplete escape sequence and uses the partial token as-is.
+
+    .. code-block:: python
+
+        split_arg_string("example 'my file")
+        ["example", "my file"]
+
+        split_arg_string("example my\\")
+        ["example", "my"]
+
+    :param string: String to split.
+    """
+    import shlex
+
+    lex = shlex.shlex(string, posix=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    out = []
+
+    try:
+        for token in lex:
+            out.append(token)
+    except ValueError:
+        # Raised when end-of-string is reached in an invalid state. Use
+        # the partial token as-is. The quote or escape character is in
+        # lex.state, not lex.token.
+        out.append(lex.token)
+
+    return out
 
 
-class Option(object):
+class Option:
     def __init__(self, opts, dest, action=None, nargs=1, const=None, obj=None):
         self._short_opts = []
         self._long_opts = []
@@ -128,7 +144,7 @@ class Option(object):
         for opt in opts:
             prefix, value = split_opt(opt)
             if not prefix:
-                raise ValueError("Invalid start character for option ({})".format(opt))
+                raise ValueError(f"Invalid start character for option ({opt})")
             self.prefixes.add(prefix[0])
             if len(prefix) == 1 and len(value) == 1:
                 self._short_opts.append(opt)
@@ -161,11 +177,11 @@ class Option(object):
         elif self.action == "count":
             state.opts[self.dest] = state.opts.get(self.dest, 0) + 1
         else:
-            raise ValueError("unknown action '{}'".format(self.action))
+            raise ValueError(f"unknown action '{self.action}'")
         state.order.append(self.obj)
 
 
-class Argument(object):
+class Argument:
     def __init__(self, dest, nargs=1, obj=None):
         self.dest = dest
         self.nargs = nargs
@@ -178,13 +194,17 @@ class Argument(object):
                 value = None
             elif holes != 0:
                 raise BadArgumentUsage(
-                    "argument {} takes {} values".format(self.dest, self.nargs)
+                    f"argument {self.dest} takes {self.nargs} values"
                 )
+
+        if self.nargs == -1 and self.obj.envvar is not None:
+            value = None
+
         state.opts[self.dest] = value
         state.order.append(self.obj)
 
 
-class ParsingState(object):
+class ParsingState:
     def __init__(self, rargs):
         self.opts = {}
         self.largs = []
@@ -192,7 +212,7 @@ class ParsingState(object):
         self.order = []
 
 
-class OptionParser(object):
+class OptionParser:
     """The option parser is an internal class that is ultimately used to
     parse options and arguments.  It's modelled after optparse and brings
     a similar but vastly simplified API.  It should generally not be used
@@ -322,7 +342,9 @@ class OptionParser(object):
 
     def _match_long_opt(self, opt, explicit_value, state):
         if opt not in self._long_opt:
-            possibilities = [word for word in self._long_opt if word.startswith(opt)]
+            from difflib import get_close_matches
+
+            possibilities = get_close_matches(opt, self._long_opt)
             raise NoSuchOption(opt, possibilities=possibilities, ctx=self.ctx)
 
         option = self._long_opt[opt]
@@ -334,17 +356,10 @@ class OptionParser(object):
             if explicit_value is not None:
                 state.rargs.insert(0, explicit_value)
 
-            nargs = option.nargs
-            if len(state.rargs) < nargs:
-                _error_opt_args(nargs, opt)
-            elif nargs == 1:
-                value = state.rargs.pop(0)
-            else:
-                value = tuple(state.rargs[:nargs])
-                del state.rargs[:nargs]
+            value = self._get_value_from_state(opt, option, state)
 
         elif explicit_value is not None:
-            raise BadOptionUsage(opt, "{} option does not take a value".format(opt))
+            raise BadOptionUsage(opt, f"{opt} option does not take a value")
 
         else:
             value = None
@@ -358,7 +373,7 @@ class OptionParser(object):
         unknown_options = []
 
         for ch in arg[1:]:
-            opt = normalize_opt(prefix + ch, self.ctx)
+            opt = normalize_opt(f"{prefix}{ch}", self.ctx)
             option = self._short_opt.get(opt)
             i += 1
 
@@ -374,14 +389,7 @@ class OptionParser(object):
                     state.rargs.insert(0, arg[i:])
                     stop = True
 
-                nargs = option.nargs
-                if len(state.rargs) < nargs:
-                    _error_opt_args(nargs, opt)
-                elif nargs == 1:
-                    value = state.rargs.pop(0)
-                else:
-                    value = tuple(state.rargs[:nargs])
-                    del state.rargs[:nargs]
+                value = self._get_value_from_state(opt, option, state)
 
             else:
                 value = None
@@ -396,7 +404,39 @@ class OptionParser(object):
         # to the state as new larg.  This way there is basic combinatorics
         # that can be achieved while still ignoring unknown arguments.
         if self.ignore_unknown_options and unknown_options:
-            state.largs.append("{}{}".format(prefix, "".join(unknown_options)))
+            state.largs.append(f"{prefix}{''.join(unknown_options)}")
+
+    def _get_value_from_state(self, option_name, option, state):
+        nargs = option.nargs
+
+        if len(state.rargs) < nargs:
+            if option.obj._flag_needs_value:
+                # Option allows omitting the value.
+                value = _flag_needs_value
+            else:
+                n_str = "an argument" if nargs == 1 else f"{nargs} arguments"
+                raise BadOptionUsage(
+                    option_name, f"{option_name} option requires {n_str}."
+                )
+        elif nargs == 1:
+            next_rarg = state.rargs[0]
+
+            if (
+                option.obj._flag_needs_value
+                and isinstance(next_rarg, str)
+                and next_rarg[:1] in self._opt_prefixes
+                and len(next_rarg) > 1
+            ):
+                # The next arg looks like the start of an option, don't
+                # use it as the value if omitting the value is allowed.
+                value = _flag_needs_value
+            else:
+                value = state.rargs.pop(0)
+        else:
+            value = tuple(state.rargs[:nargs])
+            del state.rargs[:nargs]
+
+        return value
 
     def _process_opts(self, arg, state):
         explicit_value = None

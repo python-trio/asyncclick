@@ -1,5 +1,164 @@
 .. currentmodule:: click
 
+Version 8.0
+-----------
+
+Unreleased
+
+-   Drop support for Python 2 and 3.5.
+-   Adds a repr to Command, showing the command name for friendlier
+    debugging. :issue:`1267`, :pr:`1295`
+-   Add support for distinguishing the source of a command line
+    parameter. :issue:`1264`, :pr:`1329`
+-   Add an optional parameter to ``ProgressBar.update`` to set the
+    ``current_item``. :issue:`1226`, :pr:`1332`
+-   ``version_option`` uses ``importlib.metadata`` (or the
+    ``importlib_metadata`` backport) instead of ``pkg_resources``.
+    :issue:`1582`
+-   If validation fails for a prompt with ``hide_input=True``, the value
+    is not shown in the error message. :issue:`1460`
+-   An ``IntRange`` or ``FloatRange`` option shows the accepted range in
+    its help text. :issue:`1525`, :pr:`1303`
+-   ``IntRange`` and ``FloatRange`` bounds can be open (``<``) instead
+    of closed (``<=``) by setting ``min_open`` and ``max_open``. Error
+    messages have changed to reflect this. :issue:`1100`
+-   An option defined with duplicate flag names (``"--foo/--foo"``)
+    raises a ``ValueError``. :issue:`1465`
+-   ``echo()`` will not fail when using pytest's ``capsys`` fixture on
+    Windows. :issue:`1590`
+-   Resolving commands returns the canonical command name instead of the
+    matched name. This makes behavior such as help text and
+    ``Context.invoked_subcommand`` consistent when using patterns like
+    ``AliasedGroup``. :issue:`1422`
+-   The ``BOOL`` type accepts the values "on" and "off". :issue:`1629`
+-   A ``Group`` with ``invoke_without_command=True`` will always invoke
+    its result callback. :issue:`1178`
+-   ``nargs == -1`` and ``nargs > 1`` is parsed and validated for
+    values from environment variables and defaults. :issue:`729`
+-   Detect the program name when executing a module or package with
+    ``python -m name``. :issue:`1603`
+-   Include required parent arguments in help synopsis of subcommands.
+    :issue:`1475`
+-   Help for boolean flags with ``show_default=True`` shows the flag
+    name instead of ``True`` or ``False``. :issue:`1538`
+-   Non-string objects passed to ``style()`` and ``secho()`` will be
+    converted to string. :pr:`1146`
+-   ``edit(require_save=True)`` will detect saves for editors that exit
+    very fast on filesystems with 1 second resolution. :pr:`1050`
+-   New class attributes make it easier to use custom core objects
+    throughout an entire application. :pr:`938`
+
+    -   ``Command.context_class`` controls the context created when
+        running the command.
+    -   ``Context.invoke`` creates new contexts of the same type, so a
+        custom type will persist to invoked subcommands.
+    -   ``Context.formatter_class`` controls the formatter used to
+        generate help and usage.
+    -   ``Group.command_class`` changes the default type for
+        subcommands with ``@group.command()``.
+    -   ``Group.group_class`` changes the default type for subgroups
+        with ``@group.group()``. Setting it to ``type`` will create
+        subgroups of the same type as the group itself.
+    -   Core objects use ``super()`` consistently for better support of
+        subclassing.
+
+-   Use ``Context.with_resource()`` to manage resources that would
+    normally be used in a ``with`` statement, allowing them to be used
+    across subcommands and callbacks, then cleaned up when the context
+    ends. :pr:`1191`
+-   The result object returned by the test runner's ``invoke()`` method
+    has a ``return_value`` attribute with the value returned by the
+    invoked command. :pr:`1312`
+-   Required arguments with the ``Choice`` type show the choices in
+    curly braces to indicate that one is required (``{a|b|c}``).
+    :issue:`1272`
+-   If only a name is passed to ``option()``, Click suggests renaming it
+    to ``--name``. :pr:`1355`
+-   A context's ``show_default`` parameter defaults to the value from
+    the parent context. :issue:`1565`
+-   ``click.style()`` can output 256 and RGB color codes. Most modern
+    terminals support these codes. :pr:`1429`
+-   When using ``CliRunner.invoke()``, the replaced ``stdin`` file has
+    ``name`` and ``mode`` attributes. This lets ``File`` options with
+    the ``-`` value match non-testing behavior. :issue:`1064`
+-   When creating a ``Group``, allow passing a list of commands instead
+    of a dict. :issue:`1339`
+-   When a long option name isn't valid, use ``difflib`` to make better
+    suggestions for possible corrections. :issue:`1446`
+-   Core objects have a ``to_info_dict()`` method. This gathers
+    information about the object's structure that could be useful for a
+    tool generating user-facing documentation. To get the structure of
+    an entire CLI, use ``Context(cli).to_info_dict()``. :issue:`461`
+-   Redesign the shell completion system. :issue:`1484`, :pr:`1622`
+
+    -   Support Bash >= 4.4, Zsh, and Fish, with the ability for
+        extensions to add support for other shells.
+    -   Allow commands, groups, parameters, and types to override their
+        completions suggestions.
+    -   Groups complete the names commands were registered with, which
+        can differ from the name they were created with.
+    -   The ``autocompletion`` parameter for options and arguments is
+        renamed to ``shell_complete``. The function must take
+        ``ctx, param, incomplete``, must do matching rather than return
+        all values, and must return a list of strings or a list of
+        ``ShellComplete``. The old name and behavior is deprecated and
+        will be removed in 8.1.
+    -   The env var values used to start completion have changed order.
+        The shell now comes first, such as ``{shell}_source`` rather
+        than ``source_{shell}``, and is always required.
+
+-   Completion correctly parses command line strings with incomplete
+    quoting or escape sequences. :issue:`1708`
+-   Extra context settings (``obj=...``, etc.) are passed on to the
+    completion system. :issue:`942`
+-   Include ``--help`` option in completion. :pr:`1504`
+-   ``ParameterSource`` is an ``enum.Enum`` subclass. :issue:`1530`
+-   Boolean and UUID types strip surrounding space before converting.
+    :issue:`1605`
+-   Adjusted error message from parameter type validation to be more
+    consistent. Quotes are used to distinguish the invalid value.
+    :issue:`1605`
+-   The default value for a parameter with ``nargs`` > 1 and
+    ``multiple=True`` must be a list of tuples. :issue:`1649`
+-   When getting the value for a parameter, the default is tried in the
+    same section as other sources to ensure consistent processing.
+    :issue:`1649`
+-   All parameter types accept a value that is already the correct type.
+    :issue:`1649`
+-   For shell completion, an argument is considered incomplete if its
+    value did not come from the command line args. :issue:`1649`
+-   Added ``ParameterSource.PROMPT`` to track parameter values that were
+    prompted for. :issue:`1649`
+-   Options with ``nargs`` > 1 no longer raise an error if a default is
+    not given. Parameters with ``nargs`` > 1 default to ``None``, and
+    parameters with ``multiple=True`` or ``nargs=-1`` default to an
+    empty tuple. :issue:`472`
+-   Handle empty env vars as though the option were not passed. This
+    extends the change introduced in 7.1 to be consistent in more cases.
+    :issue:`1285`
+-   ``Parameter.get_default()`` checks ``Context.default_map`` to
+    handle overrides consistently in help text, ``invoke()``, and
+    prompts. :issue:`1548`
+-   Add ``prompt_required`` param to ``Option``. When set to ``False``,
+    the user will only be prompted for an input if no value was passed.
+    :issue:`736`
+-   Providing the value to an option can be made optional through
+    ``is_flag=False``, and the value can instead be prompted for or
+    passed in as a default value.
+    :issue:`549, 736, 764, 921, 1015, 1618`
+-   Fix formatting when ``Command.options_metavar`` is empty. :pr:`1551`
+-   The default value passed to ``prompt`` will be cast to the correct
+    type like an input value would be. :pr:`1517`
+-   Automatically generated short help messages will stop at the first
+    ending of a phrase or double linebreak. :issue:`1082`
+-   Skip progress bar render steps for efficiency with very fast
+    iterators by setting ``update_min_steps``. :issue:`676`
+-   Respect ``case_sensitive=False`` when doing shell completion for
+    ``Choice`` :issue:`1692`
+-   Use ``mkstemp()`` instead of ``mktemp()`` in pager implementation.
+    :issue:`1752`
+
+
 Version 7.1.2
 -------------
 
@@ -46,7 +205,7 @@ Released 2020-03-09
     :issue:`1277`, :pr:`1318`
 -   Add ``no_args_is_help`` option to ``click.Command``, defaults to
     False :pr:`1167`
--   Add ``show_defaults`` parameter to ``Context`` to enable showing
+-   Add ``show_default`` parameter to ``Context`` to enable showing
     defaults globally. :issue:`1018`
 -   Handle ``env MYPATH=''`` as though the option were not passed.
     :issue:`1196`
@@ -90,6 +249,8 @@ Released 2020-03-09
 -   Make the warning about old 2-arg parameter callbacks a deprecation
     warning, to be removed in 8.0. This has been a warning since Click
     2.0. :pr:`1492`
+-   Adjust error messages to standardize the types of quotes used so
+    they match error messages from Python.
 
 
 Version 7.0
@@ -480,15 +641,16 @@ Version 3.0
 
 Released 2014-08-12, codename "clonk clonk"
 
--   Formatter now no longer attempts to accomodate for terminals smaller
-    than 50 characters. If that happens it just assumes a minimal width.
+-   Formatter now no longer attempts to accommodate for terminals
+    smaller than 50 characters. If that happens it just assumes a
+    minimal width.
 -   Added a way to not swallow exceptions in the test system.
 -   Added better support for colors with pagers and ways to override the
     autodetection.
 -   The CLI runner's result object now has a traceback attached.
 -   Improved automatic short help detection to work better with dots
     that do not terminate sentences.
--   When definining options without actual valid option strings now,
+-   When defining options without actual valid option strings now,
     Click will give an error message instead of silently passing. This
     should catch situations where users wanted to created arguments
     instead of options.

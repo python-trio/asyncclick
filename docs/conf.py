@@ -1,6 +1,12 @@
 from pallets_sphinx_themes import get_version
 from pallets_sphinx_themes import ProjectLink
 
+import asyncclick as click
+import click._compat
+
+# compat until pallets-sphinx-themes is updated
+click._compat.text_type = str
+
 # Project --------------------------------------------------------------
 
 project = "Click"
@@ -17,6 +23,7 @@ extensions = [
     "sphinxcontrib.log_cabinet",
     "pallets_sphinx_themes",
     "sphinx_issues",
+    "sphinx_tabs.tabs",
 ]
 intersphinx_mapping = {"python": ("https://docs.python.org/3/", None)}
 issues_github_path = "pallets/click"

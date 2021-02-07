@@ -1,14 +1,12 @@
 import os
 import sys
+from io import BytesIO
 
 import pytest
 
 import asyncclick as click
 from asyncclick._compat import WIN
 from asyncclick.testing import CliRunner
-
-# Use the most reasonable io that users would use for the python version.
-from io import BytesIO as ReasonableBytesIO
 
 
 @pytest.mark.anyio
@@ -49,12 +47,12 @@ async def test_runner_with_stream():
             o.flush()
 
     runner = CliRunner()
-    result = await runner.invoke(test, input=ReasonableBytesIO(b"Hello World!\n"))
+    result = await runner.invoke(test, input=BytesIO(b"Hello World!\n"))
     assert not result.exception
     assert result.output == "Hello World!\n"
 
     runner = CliRunner(echo_stdin=True)
-    result = await runner.invoke(test, input=ReasonableBytesIO(b"Hello World!\n"))
+    result = await runner.invoke(test, input=BytesIO(b"Hello World!\n"))
     assert not result.exception
     assert result.output == "Hello World!\nHello World!\n"
 
@@ -64,7 +62,7 @@ async def test_prompts():
     @click.command()
     @click.option("--foo", prompt=True)
     def test(foo):
-        click.echo("foo={}".format(foo))
+        click.echo(f"foo={foo}")
 
     runner = CliRunner()
     result = await runner.invoke(test, input="wau wau\n")
@@ -74,7 +72,7 @@ async def test_prompts():
     @click.command()
     @click.option("--foo", prompt=True, hide_input=True)
     def test(foo):
-        click.echo("foo={}".format(foo))
+        click.echo(f"foo={foo}")
 
     runner = CliRunner()
     result = await runner.invoke(test, input="wau wau\n")
@@ -133,7 +131,7 @@ async def test_with_color():
     assert not result.exception
 
     result = await runner.invoke(cli, color=True)
-    assert result.output == "{}\n".format(click.style("hello world", fg="blue"))
+    assert result.output == f"{click.style('hello world', fg='blue')}\n"
     assert not result.exception
 
 
@@ -224,7 +222,7 @@ async def test_exit_code_and_output_from_sys_exit():
 async def test_env():
     @click.command()
     def cli_env():
-        click.echo("ENV={}".format(os.environ["TEST_CLICK_ENV"]))
+        click.echo(f"ENV={os.environ['TEST_CLICK_ENV']}")
 
     runner = CliRunner()
 
@@ -309,3 +307,28 @@ async def test_setting_prog_name_in_extra():
     result = await runner.invoke(cli, prog_name="foobar")
     assert not result.exception
     assert result.output == "ok\n"
+
+
+@pytest.mark.anyio
+async def test_command_standalone_mode_returns_value():
+    @click.command()
+    def cli():
+        click.echo("ok")
+        return "Hello, World!"
+
+    runner = CliRunner()
+    result = await runner.invoke(cli, standalone_mode=False)
+    assert result.output == "ok\n"
+    assert result.return_value == "Hello, World!"
+    assert result.exit_code == 0
+
+
+def test_file_stdin_attrs(runner):
+    @click.command()
+    @click.argument("f", type=click.File())
+    def cli(f):
+        click.echo(f.name)
+        click.echo(f.mode, nl=False)
+
+    result = runner.invoke(cli, ["-"])
+    assert result.output == "<stdin>\nr"

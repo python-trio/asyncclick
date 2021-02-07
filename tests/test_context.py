@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
-import asyncclick as click
+from contextlib import asynccontextmanager, contextmanager
+
 import pytest
-from contextlib import contextmanager, asynccontextmanager
+
+import asyncclick as click
+from asyncclick.core import ParameterSource
 
 
 def test_ensure_context_objects(runner):
-    class Foo(object):
+    class Foo:
         def __init__(self):
             self.title = "default"
 
@@ -27,7 +29,7 @@ def test_ensure_context_objects(runner):
 
 
 def test_get_context_objects(runner):
-    class Foo(object):
+    class Foo:
         def __init__(self):
             self.title = "default"
 
@@ -50,7 +52,7 @@ def test_get_context_objects(runner):
 
 
 def test_get_context_objects_no_ensuring(runner):
-    class Foo(object):
+    class Foo:
         def __init__(self):
             self.title = "default"
 
@@ -73,7 +75,7 @@ def test_get_context_objects_no_ensuring(runner):
 
 
 def test_get_context_objects_missing(runner):
-    class Foo(object):
+    class Foo:
         pass
 
     pass_foo = click.make_pass_decorator(Foo)
@@ -132,7 +134,7 @@ def test_global_context_object(runner):
 
 
 def test_context_meta(runner):
-    LANG_KEY = "{}.lang".format(__name__)
+    LANG_KEY = f"{__name__}.lang"
 
     def set_language(value):
         click.get_current_context().meta[LANG_KEY] = value
@@ -262,13 +264,30 @@ def test_close_before_pop(runner):
     assert called == [True]
 
 
+@pytest.mark.anyio
+async def test_with_resource():
+    @contextmanager
+    def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    ctx = click.Context(click.Command("test"))
+
+    async with ctx.scope():
+        rv = ctx.with_resource(manager())
+        assert rv[0] == 1
+
+    assert rv == [0]
+
+
 def test_make_pass_decorator_args(runner):
     """
     Test to check that make_pass_decorator doesn't consume arguments based on
     invocation order.
     """
 
-    class Foo(object):
+    class Foo:
         title = "foocmd"
 
     pass_foo = click.make_pass_decorator(Foo)
@@ -314,3 +333,50 @@ async def test_exit_not_standalone():
         ctx.exit(0)
 
     assert await cli.main([], "test_exit_not_standalone", standalone_mode=False) == 0
+
+
+@pytest.mark.parametrize(
+    ("option_args", "invoke_args", "expect"),
+    [
+        pytest.param({}, {}, ParameterSource.DEFAULT, id="default"),
+        pytest.param(
+            {},
+            {"default_map": {"option": 1}},
+            ParameterSource.DEFAULT_MAP,
+            id="default_map",
+        ),
+        pytest.param(
+            {},
+            {"args": ["-o", "1"]},
+            ParameterSource.COMMANDLINE,
+            id="commandline short",
+        ),
+        pytest.param(
+            {},
+            {"args": ["--option", "1"]},
+            ParameterSource.COMMANDLINE,
+            id="commandline long",
+        ),
+        pytest.param(
+            {},
+            {"auto_envvar_prefix": "TEST", "env": {"TEST_OPTION": "1"}},
+            ParameterSource.ENVIRONMENT,
+            id="environment auto",
+        ),
+        pytest.param(
+            {"envvar": "NAME"},
+            {"env": {"NAME": "1"}},
+            ParameterSource.ENVIRONMENT,
+            id="environment manual",
+        ),
+    ],
+)
+def test_parameter_source(runner, option_args, invoke_args, expect):
+    @click.command()
+    @click.pass_context
+    @click.option("-o", "--option", default=1, **option_args)
+    def cli(ctx, option):
+        return ctx.get_parameter_source("option")
+
+    rv = runner.invoke(cli, standalone_mode=False, **invoke_args)
+    assert rv.return_value == expect

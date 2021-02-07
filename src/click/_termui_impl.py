@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module contains implementations for the termui module. To keep the
 import time of Click down, some infrequently used functionality is
@@ -13,10 +12,8 @@ import time
 from ._compat import _default_text_stdout
 from ._compat import CYGWIN
 from ._compat import get_best_encoding
-from ._compat import int_types
 from ._compat import isatty
 from ._compat import open_stream
-from ._compat import range_type
 from ._compat import strip_ansi
 from ._compat import term_len
 from ._compat import WIN
@@ -44,12 +41,12 @@ def _length_hint(obj):
             hint = get_hint(obj)
         except TypeError:
             return None
-        if hint is NotImplemented or not isinstance(hint, int_types) or hint < 0:
+        if hint is NotImplemented or not isinstance(hint, int) or hint < 0:
             return None
         return hint
 
 
-class ProgressBar(object):
+class ProgressBar:
     def __init__(
         self,
         iterable,
@@ -65,6 +62,7 @@ class ProgressBar(object):
         label=None,
         file=None,
         color=None,
+        update_min_steps=1,
         width=30,
     ):
         self.fill_char = fill_char
@@ -80,6 +78,8 @@ class ProgressBar(object):
             file = _default_text_stdout()
         self.file = file
         self.color = color
+        self.update_min_steps = update_min_steps
+        self._completed_intervals = 0
         self.width = width
         self.autowidth = width == 0
 
@@ -88,7 +88,7 @@ class ProgressBar(object):
         if iterable is None:
             if length is None:
                 raise TypeError("iterable or length is required")
-            iterable = range_type(length)
+            iterable = range(length)
         self.iter = iter(iterable)
         self.length = length
         self.length_known = length is not None
@@ -125,9 +125,6 @@ class ProgressBar(object):
         # so it is re-entry safe. Calling `next(self.generator())`
         # twice works and does "what you want".
         return next(iter(self))
-
-    # Python 2 compat
-    next = __next__
 
     def is_fast(self):
         return time.time() - self.start <= self.short_limit
@@ -166,19 +163,19 @@ class ProgressBar(object):
             hours = t % 24
             t //= 24
             if t > 0:
-                return "{}d {:02}:{:02}:{:02}".format(t, hours, minutes, seconds)
+                return f"{t}d {hours:02}:{minutes:02}:{seconds:02}"
             else:
-                return "{:02}:{:02}:{:02}".format(hours, minutes, seconds)
+                return f"{hours:02}:{minutes:02}:{seconds:02}"
         return ""
 
     def format_pos(self):
         pos = str(self.pos)
         if self.length_known:
-            pos += "/{}".format(self.length)
+            pos += f"/{self.length}"
         return pos
 
     def format_pct(self):
-        return "{: 4}%".format(int(self.pct * 100))[1:]
+        return f"{int(self.pct * 100): 4}%"[1:]
 
     def format_bar(self):
         if self.length_known:
@@ -287,9 +284,32 @@ class ProgressBar(object):
 
         self.eta_known = self.length_known
 
-    def update(self, n_steps):
-        self.make_step(n_steps)
-        self.render_progress()
+    def update(self, n_steps, current_item=None):
+        """Update the progress bar by advancing a specified number of
+        steps, and optionally set the ``current_item`` for this new
+        position.
+
+        :param n_steps: Number of steps to advance.
+        :param current_item: Optional item to set as ``current_item``
+            for the updated position.
+
+        .. versionchanged:: 8.0
+            Added the ``current_item`` optional parameter.
+
+        .. versionchanged:: 8.0
+            Only render when the number of steps meets the
+            ``update_min_steps`` threshold.
+        """
+        self._completed_intervals += n_steps
+
+        if self._completed_intervals >= self.update_min_steps:
+            self.make_step(self._completed_intervals)
+
+            if current_item is not None:
+                self.current_item = current_item
+
+            self.render_progress()
+            self._completed_intervals = 0
 
     def finish(self):
         self.eta_known = 0
@@ -312,8 +332,7 @@ class ProgressBar(object):
             raise RuntimeError("You need to use progress bars in a with block.")
 
         if self.is_hidden:
-            for rv in self.iter:
-                yield rv
+            yield from self.iter
         else:
             for rv in self.iter:
                 self.current_item = rv
@@ -344,7 +363,7 @@ def pager(generator, color=None):
     fd, filename = tempfile.mkstemp()
     os.close(fd)
     try:
-        if hasattr(os, "system") and os.system('more "{}"'.format(filename)) == 0:
+        if hasattr(os, "system") and os.system(f'more "{filename}"') == 0:
             return _pipepager(generator, "more", color)
         return _nullpager(stdout, generator, color)
     finally:
@@ -363,7 +382,7 @@ def _pipepager(generator, cmd, color):
     # condition that
     cmd_detail = cmd.rsplit("/", 1)[-1].split()
     if color is None and cmd_detail[0] == "less":
-        less_flags = "{}{}".format(os.environ.get("LESS", ""), " ".join(cmd_detail[1:]))
+        less_flags = f"{os.environ.get('LESS', '')}{' '.join(cmd_detail[1:])}"
         if not less_flags:
             env["LESS"] = "-R"
             color = True
@@ -378,7 +397,7 @@ def _pipepager(generator, cmd, color):
                 text = strip_ansi(text)
 
             c.stdin.write(text.encode(encoding, "replace"))
-    except (IOError, KeyboardInterrupt):
+    except (OSError, KeyboardInterrupt):
         pass
     else:
         c.stdin.close()
@@ -404,7 +423,7 @@ def _tempfilepager(generator, cmd, color):
     """Page through text by invoking a program on a temporary file."""
     import tempfile
 
-    filename = tempfile.mktemp()
+    filename = tempfile.mkstemp()
     # TODO: This never terminates if the passed generator never terminates.
     text = "".join(generator)
     if not color:
@@ -413,7 +432,7 @@ def _tempfilepager(generator, cmd, color):
     with open_stream(filename, "wb")[0] as f:
         f.write(text.encode(encoding))
     try:
-        os.system('{} "{}"'.format(cmd, filename))
+        os.system(f'{cmd} "{filename}"')
     finally:
         os.unlink(filename)
 
@@ -426,7 +445,7 @@ def _nullpager(stream, generator, color):
         stream.write(text)
 
 
-class Editor(object):
+class Editor:
     def __init__(self, editor=None, env=None, require_save=True, extension=".txt"):
         self.editor = editor
         self.env = env
@@ -443,7 +462,7 @@ class Editor(object):
         if WIN:
             return "notepad"
         for editor in "sensible-editor", "vim", "nano":
-            if os.system("which {} >/dev/null 2>&1".format(editor)) == 0:
+            if os.system(f"which {editor} >/dev/null 2>&1") == 0:
                 return editor
         return "vi"
 
@@ -457,34 +476,43 @@ class Editor(object):
         else:
             environ = None
         try:
-            c = subprocess.Popen(
-                '{} "{}"'.format(editor, filename), env=environ, shell=True,
-            )
+            c = subprocess.Popen(f'{editor} "{filename}"', env=environ, shell=True)
             exit_code = c.wait()
             if exit_code != 0:
-                raise ClickException("{}: Editing failed!".format(editor))
+                raise ClickException(f"{editor}: Editing failed!")
         except OSError as e:
-            raise ClickException("{}: Editing failed: {}".format(editor, e))
+            raise ClickException(f"{editor}: Editing failed: {e}")
 
     def edit(self, text):
         import tempfile
 
-        text = text or ""
-        if text and not text.endswith("\n"):
-            text += "\n"
+        if not text:
+            text = ""
+
+        is_bytes = isinstance(text, (bytes, bytearray))
+
+        if not is_bytes:
+            if text and not text.endswith("\n"):
+                text += "\n"
+
+            if WIN:
+                text = text.replace("\n", "\r\n").encode("utf-8-sig")
+            else:
+                text = text.encode("utf-8")
 
         fd, name = tempfile.mkstemp(prefix="editor-", suffix=self.extension)
-        try:
-            if WIN:
-                encoding = "utf-8-sig"
-                text = text.replace("\n", "\r\n")
-            else:
-                encoding = "utf-8"
-            text = text.encode(encoding)
 
-            f = os.fdopen(fd, "wb")
-            f.write(text)
-            f.close()
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(text)
+
+            # If the filesystem resolution is 1 second, like Mac OS
+            # 10.12 Extended, or 2 seconds, like FAT32, and the editor
+            # closes very fast, require_save can fail. Set the modified
+            # time to be 2 seconds in the past to work around this.
+            os.utime(name, (os.path.getatime(name), os.path.getmtime(name) - 2))
+            # Depending on the resolution, the exact value might not be
+            # recorded, so get the new recorded value.
             timestamp = os.path.getmtime(name)
 
             self.edit_file(name)
@@ -492,11 +520,12 @@ class Editor(object):
             if self.require_save and os.path.getmtime(name) == timestamp:
                 return None
 
-            f = open(name, "rb")
-            try:
+            with open(name, "rb") as f:
                 rv = f.read()
-            finally:
-                f.close()
+
+            if is_bytes:
+                return rv
+
             return rv.decode("utf-8-sig").replace("\r\n", "\n")
         finally:
             os.unlink(name)
@@ -506,10 +535,8 @@ def open_url(url, wait=False, locate=False):
     import subprocess
 
     def _unquote_file(url):
-        try:
-            import urllib
-        except ImportError:
-            import urllib
+        import urllib
+
         if url.startswith("file://"):
             url = urllib.unquote(url[7:])
         return url
@@ -528,19 +555,21 @@ def open_url(url, wait=False, locate=False):
             null.close()
     elif WIN:
         if locate:
-            url = _unquote_file(url)
-            args = 'explorer /select,"{}"'.format(_unquote_file(url.replace('"', "")))
+            url = _unquote_file(url.replace('"', ""))
+            args = f'explorer /select,"{url}"'
         else:
-            args = 'start {} "" "{}"'.format(
-                "/WAIT" if wait else "", url.replace('"', "")
-            )
+            url = url.replace('"', "")
+            wait = "/WAIT" if wait else ""
+            args = f'start {wait} "" "{url}"'
         return os.system(args)
     elif CYGWIN:
         if locate:
-            url = _unquote_file(url)
-            args = 'cygstart "{}"'.format(os.path.dirname(url).replace('"', ""))
+            url = os.path.dirname(_unquote_file(url).replace('"', ""))
+            args = f'cygstart "{url}"'
         else:
-            args = 'cygstart {} "{}"'.format("-w" if wait else "", url.replace('"', ""))
+            url = url.replace('"', "")
+            wait = "-w" if wait else ""
+            args = f'cygstart {wait} "{url}"'
         return os.system(args)
 
     try:
@@ -562,11 +591,11 @@ def open_url(url, wait=False, locate=False):
 
 
 def _translate_ch_to_exc(ch):
-    if ch == u"\x03":
+    if ch == "\x03":
         raise KeyboardInterrupt()
-    if ch == u"\x04" and not WIN:  # Unix-like, Ctrl+D
+    if ch == "\x04" and not WIN:  # Unix-like, Ctrl+D
         raise EOFError()
-    if ch == u"\x1a" and WIN:  # Windows, Ctrl+Z
+    if ch == "\x1a" and WIN:  # Windows, Ctrl+Z
         raise EOFError()
 
 
@@ -613,7 +642,7 @@ if WIN:
             func = msvcrt.getwch
 
         rv = func()
-        if rv in (u"\x00", u"\xe0"):
+        if rv in ("\x00", "\xe0"):
             # \x00 and \xe0 are control characters that indicate special key,
             # see above.
             rv += func()

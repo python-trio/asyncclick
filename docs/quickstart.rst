@@ -32,12 +32,7 @@ install separate copies of Python, but it does provide a clever way to
 keep different project environments isolated.  Let's see how virtualenv
 works.
 
-If you are on Mac OS X or Linux, chances are that one of the following two
-commands will work for you::
-
-    $ sudo easy_install virtualenv
-
-or even better::
+If you are on Mac OS X or Linux::
 
     $ pip install virtualenv --user
 
@@ -162,7 +157,7 @@ Echoing
 
 Why does this example use :func:`echo` instead of the regular
 :func:`print` function?  The answer to this question is that Click
-attempts to support both Python 2 and Python 3 the same way and to be very
+attempts to support different environments consistently and to be very
 robust even when the environment is misconfigured.  Click wants to be
 functional at least on a basic level even if everything is completely
 broken.
@@ -174,9 +169,7 @@ correction in case the terminal is misconfigured instead of dying with an
 As an added benefit, starting with Click 2.0, the echo function also
 has good support for ANSI colors.  It will automatically strip ANSI codes
 if the output stream is a file and if colorama is supported, ANSI colors
-will also work on Windows. Note that in Python 2, the :func:`echo` function
-does not parse color code information from bytearrays. See :ref:`ansi-colors`
-for more information.
+will also work on Windows. See :ref:`ansi-colors`.
 
 If you don't need this, you can also use the `print()` construct /
 function.
@@ -233,6 +226,30 @@ other invocations::
     if __name__ == '__main__':
         cli()
 
+
+Registering Commands Later
+--------------------------
+
+Instead of using the ``@group.command()`` decorator, commands can be
+decorated with the plain ``@click.command()`` decorator and registered
+with a group later with ``group.add_command()``. This could be used to
+split commands into multiple Python modules.
+
+.. code-block:: python
+
+    @click.command()
+    def greet():
+        click.echo("Hello, World!")
+
+.. code-block:: python
+
+    @click.group()
+    def group():
+        pass
+
+    group.add_command(greet)
+
+
 Adding Parameters
 -----------------
 
@@ -245,7 +262,7 @@ To add parameters, use the :func:`option` and :func:`argument` decorators:
     @click.argument('name')
     def hello(count, name):
         for x in range(count):
-            click.echo('Hello %s!' % name)
+            click.echo(f"Hello {name}!")
 
 What it looks like:
 

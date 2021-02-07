@@ -5,26 +5,29 @@ from datetime import datetime
 from ._compat import _get_argv_encoding
 from ._compat import filename_to_ui
 from ._compat import get_filesystem_encoding
-from ._compat import get_streerror
+from ._compat import get_strerror
 from ._compat import open_stream
-from ._compat import text_type
 from .exceptions import BadParameter
 from .utils import LazyFile
 from .utils import safecall
 
 
-class ParamType(object):
-    """Helper for converting values through types.  The following is
-    necessary for a valid type:
+class ParamType:
+    """Represents the type of a parameter. Validates and converts values
+    from the command line or Python into the correct type.
 
-    *   it needs a name
-    *   it needs to pass through None unchanged
-    *   it needs to convert from a string
-    *   it needs to convert its result type through unchanged
-        (eg: needs to be idempotent)
-    *   it needs to be able to deal with param and context being `None`.
-        This can be the case when the object is used with prompt
-        inputs.
+    To implement a custom type, subclass and implement at least the
+    following:
+
+    -   The :attr:`name` class attribute must be set.
+    -   Calling an instance of the type with ``None`` must return
+        ``None``. This is already implemented by default.
+    -   :meth:`convert` must convert string values to the correct type.
+    -   :meth:`convert` must accept values that are already the correct
+        type.
+    -   It must be able to convert a value if the ``ctx`` and ``param``
+        arguments are ``None``. This can occur when converting prompt
+        input.
     """
 
     is_composite = False
@@ -39,6 +42,20 @@ class ParamType(object):
     #: are split by ``os.path.pathsep`` by default (":" on Unix and ";" on
     #: Windows).
     envvar_list_splitter = None
+
+    async def to_info_dict(self):
+        """Gather information that could be useful for a tool generating
+        user-facing documentation.
+
+        Use :meth:`click.Context.to_info_dict` to traverse the entire
+        CLI structure.
+
+        .. versionadded:: 8.0
+        """
+        # The class name without the "ParamType" suffix.
+        param_type = type(self).__name__.partition("ParamType")[0]
+        param_type = param_type.partition("ParameterType")[0]
+        return {"param_type": param_type, "name": self.name}
 
     def __call__(self, value, param=None, ctx=None):
         if value is not None:
@@ -55,8 +72,24 @@ class ParamType(object):
         """
 
     def convert(self, value, param, ctx):
-        """Converts the value.  This is not invoked for values that are
-        `None` (the missing value).
+        """Convert the value to the correct type. This is not called if
+        the value is ``None`` (the missing value).
+
+        This must accept string values from the command line, as well as
+        values that are already the correct type. It may also convert
+        other compatible types.
+
+        The ``param`` and ``ctx`` arguments may be ``None`` in certain
+        situations, such as when converting prompt input.
+
+        If the value cannot be converted, call :meth:`fail` with a
+        descriptive message.
+
+        :param value: The value to convert.
+        :param param: The parameter that is using this type to convert
+            its value. May be ``None``.
+        :param ctx: The current context that arrived at this value. May
+            be ``None``.
         """
         return value
 
@@ -74,6 +107,21 @@ class ParamType(object):
         """Helper method to fail with an invalid value message."""
         raise BadParameter(message, ctx=ctx, param=param)
 
+    def shell_complete(self, ctx, param, incomplete):
+        """Return a list of
+        :class:`~click.shell_completion.CompletionItem` objects for the
+        incomplete value. Most types do not provide completions, but
+        some do, and this allows custom types to provide custom
+        completions as well.
+
+        :param ctx: Invocation context for this command.
+        :param param: The parameter that is requesting completion.
+        :param incomplete: Value being completed. May be empty.
+
+        .. versionadded:: 8.0
+        """
+        return []
+
 
 class CompositeParamType(ParamType):
     is_composite = True
@@ -88,14 +136,20 @@ class FuncParamType(ParamType):
         self.name = func.__name__
         self.func = func
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict["func"] = self.func
+        return info_dict
+
     def convert(self, value, param, ctx):
         try:
             return self.func(value)
         except ValueError:
             try:
-                value = text_type(value)
+                value = str(value)
             except UnicodeError:
-                value = str(value).decode("utf-8", "replace")
+                value = value.decode("utf-8", "replace")
+
             self.fail(value, param, ctx)
 
 
@@ -127,7 +181,7 @@ class StringParamType(ParamType):
                 else:
                     value = value.decode("utf-8", "replace")
             return value
-        return value
+        return str(value)
 
     def __repr__(self):
         return "STRING"
@@ -156,11 +210,25 @@ class Choice(ParamType):
         self.choices = choices
         self.case_sensitive = case_sensitive
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict["choices"] = self.choices
+        info_dict["case_sensitive"] = self.case_sensitive
+        return info_dict
+
     def get_metavar(self, param):
-        return "[{}]".format("|".join(self.choices))
+        choices_str = "|".join(self.choices)
+
+        # Use curly braces to indicate a required argument.
+        if param.required and param.param_type_name == "argument":
+            return f"{{{choices_str}}}"
+
+        # Use square braces to indicate an option or optional argument.
+        return f"[{choices_str}]"
 
     def get_missing_message(self, param):
-        return "Choose from:\n\t{}.".format(",\n\t".join(self.choices))
+        choice_str = ",\n\t".join(self.choices)
+        return f"Choose from:\n\t{choice_str}"
 
     def convert(self, value, param, ctx):
         # Match through normalization and case sensitivity
@@ -178,27 +246,42 @@ class Choice(ParamType):
             }
 
         if not self.case_sensitive:
-            lower = str.casefold
-
-            normed_value = lower(normed_value)
+            normed_value = normed_value.casefold()
             normed_choices = {
-                lower(normed_choice): original
+                normed_choice.casefold(): original
                 for normed_choice, original in normed_choices.items()
             }
 
         if normed_value in normed_choices:
             return normed_choices[normed_value]
 
-        self.fail(
-            "invalid choice: {}. (choose from {})".format(
-                value, ", ".join(self.choices)
-            ),
-            param,
-            ctx,
-        )
+        one_of = "one of " if len(self.choices) > 1 else ""
+        choices_str = ", ".join(repr(c) for c in self.choices)
+        self.fail(f"{value!r} is not {one_of}{choices_str}.", param, ctx)
 
     def __repr__(self):
-        return "Choice('{}')".format(list(self.choices))
+        return f"Choice({list(self.choices)})"
+
+    def shell_complete(self, ctx, param, incomplete):
+        """Complete choices that start with the incomplete value.
+
+        :param ctx: Invocation context for this command.
+        :param param: The parameter that is requesting completion.
+        :param incomplete: Value being completed. May be empty.
+
+        .. versionadded:: 8.0
+        """
+        from asyncclick.shell_completion import CompletionItem
+
+        str_choices = map(str, self.choices)
+
+        if self.case_sensitive:
+            matched = (c for c in str_choices if c.startswith(incomplete))
+        else:
+            incomplete = incomplete.lower()
+            matched = (c for c in str_choices if c.lower().startswith(incomplete))
+
+        return [CompletionItem(c) for c in matched]
 
 
 class DateTime(ParamType):
@@ -227,8 +310,13 @@ class DateTime(ParamType):
     def __init__(self, formats=None):
         self.formats = formats or ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict["formats"] = self.formats
+        return info_dict
+
     def get_metavar(self, param):
-        return "[{}]".format("|".join(self.formats))
+        return f"[{'|'.join(self.formats)}]"
 
     def _try_to_convert_date(self, value, format):
         try:
@@ -237,180 +325,198 @@ class DateTime(ParamType):
             return None
 
     def convert(self, value, param, ctx):
-        # Exact match
-        for format in self.formats:
-            dtime = self._try_to_convert_date(value, format)
-            if dtime:
-                return dtime
+        if isinstance(value, datetime):
+            return value
 
+        for format in self.formats:
+            converted = self._try_to_convert_date(value, format)
+
+            if converted is not None:
+                return converted
+
+        plural = "s" if len(self.formats) > 1 else ""
+        formats_str = ", ".join(repr(f) for f in self.formats)
         self.fail(
-            "invalid datetime format: {}. (choose from {})".format(
-                value, ", ".join(self.formats)
-            )
+            f"{value!r} does not match the format{plural} {formats_str}.", param, ctx
         )
 
     def __repr__(self):
         return "DateTime"
 
 
-class IntParamType(ParamType):
-    name = "integer"
+class _NumberParamTypeBase(ParamType):
+    _number_class = None
 
     def convert(self, value, param, ctx):
         try:
-            return int(value)
+            return self._number_class(value)
         except ValueError:
-            self.fail("{} is not a valid integer".format(value), param, ctx)
+            self.fail(f"{value!r} is not a valid {self.name}.", param, ctx)
+
+
+class _NumberRangeBase(_NumberParamTypeBase):
+    def __init__(self, min=None, max=None, min_open=False, max_open=False, clamp=False):
+        self.min = min
+        self.max = max
+        self.min_open = min_open
+        self.max_open = max_open
+        self.clamp = clamp
+
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict.update(
+            min=self.min,
+            max=self.max,
+            min_open=self.min_open,
+            max_open=self.max_open,
+            clamp=self.clamp,
+        )
+        return info_dict
+
+    def convert(self, value, param, ctx):
+        import operator
+
+        rv = super().convert(value, param, ctx)
+        lt_min = self.min is not None and (
+            operator.le if self.min_open else operator.lt
+        )(rv, self.min)
+        gt_max = self.max is not None and (
+            operator.ge if self.max_open else operator.gt
+        )(rv, self.max)
+
+        if self.clamp:
+            if lt_min:
+                return self._clamp(self.min, 1, self.min_open)
+
+            if gt_max:
+                return self._clamp(self.max, -1, self.max_open)
+
+        if lt_min or gt_max:
+            self.fail(f"{rv} is not in the range {self._describe_range()}.", param, ctx)
+
+        return rv
+
+    def _clamp(self, bound, dir, open):
+        """Find the valid value to clamp to bound in the given
+        direction.
+
+        :param bound: The boundary value.
+        :param dir: 1 or -1 indicating the direction to move.
+        :param open: If true, the range does not include the bound.
+        """
+        raise NotImplementedError
+
+    def _describe_range(self):
+        """Describe the range for use in help text."""
+        if self.min is None:
+            op = "<" if self.max_open else "<="
+            return f"x{op}{self.max}"
+
+        if self.max is None:
+            op = ">" if self.min_open else ">="
+            return f"x{op}{self.min}"
+
+        lop = "<" if self.min_open else "<="
+        rop = "<" if self.max_open else "<="
+        return f"{self.min}{lop}x{rop}{self.max}"
+
+    def __repr__(self):
+        clamp = " clamped" if self.clamp else ""
+        return f"<{type(self).__name__} {self._describe_range()}{clamp}>"
+
+
+class IntParamType(_NumberParamTypeBase):
+    name = "integer"
+    _number_class = int
 
     def __repr__(self):
         return "INT"
 
 
-class IntRange(IntParamType):
-    """A parameter that works similar to :data:`click.INT` but restricts
-    the value to fit into a range.  The default behavior is to fail if the
-    value falls outside the range, but it can also be silently clamped
-    between the two edges.
+class IntRange(_NumberRangeBase, IntParamType):
+    """Restrict an :data:`click.INT` value to a range of accepted
+    values. See :ref:`ranges`.
 
-    See :ref:`ranges` for an example.
+    If ``min`` or ``max`` are not passed, any value is accepted in that
+    direction. If ``min_open`` or ``max_open`` are enabled, the
+    corresponding boundary is not included in the range.
+
+    If ``clamp`` is enabled, a value outside the range is clamped to the
+    boundary instead of failing.
+
+    .. versionchanged:: 8.0
+        Added the ``min_open`` and ``max_open`` parameters.
     """
 
     name = "integer range"
 
-    def __init__(self, min=None, max=None, clamp=False):
-        self.min = min
-        self.max = max
-        self.clamp = clamp
+    def _clamp(self, bound, dir, open):
+        if not open:
+            return bound
 
-    def convert(self, value, param, ctx):
-        rv = IntParamType.convert(self, value, param, ctx)
-        if self.clamp:
-            if self.min is not None and rv < self.min:
-                return self.min
-            if self.max is not None and rv > self.max:
-                return self.max
-        if (
-            self.min is not None
-            and rv < self.min
-            or self.max is not None
-            and rv > self.max
-        ):
-            if self.min is None:
-                self.fail(
-                    "{} is bigger than the maximum valid value {}.".format(
-                        rv, self.max
-                    ),
-                    param,
-                    ctx,
-                )
-            elif self.max is None:
-                self.fail(
-                    "{} is smaller than the minimum valid value {}.".format(
-                        rv, self.min
-                    ),
-                    param,
-                    ctx,
-                )
-            else:
-                self.fail(
-                    "{} is not in the valid range of {} to {}.".format(
-                        rv, self.min, self.max
-                    ),
-                    param,
-                    ctx,
-                )
-        return rv
-
-    def __repr__(self):
-        return "IntRange({}, {})".format(self.min, self.max)
+        return bound + dir
 
 
-class FloatParamType(ParamType):
+class FloatParamType(_NumberParamTypeBase):
     name = "float"
-
-    def convert(self, value, param, ctx):
-        try:
-            return float(value)
-        except ValueError:
-            self.fail(
-                "{} is not a valid floating point value".format(value), param, ctx
-            )
+    _number_class = float
 
     def __repr__(self):
         return "FLOAT"
 
 
-class FloatRange(FloatParamType):
-    """A parameter that works similar to :data:`click.FLOAT` but restricts
-    the value to fit into a range.  The default behavior is to fail if the
-    value falls outside the range, but it can also be silently clamped
-    between the two edges.
+class FloatRange(_NumberRangeBase, FloatParamType):
+    """Restrict a :data:`click.FLOAT` value to a range of accepted
+    values. See :ref:`ranges`.
 
-    See :ref:`ranges` for an example.
+    If ``min`` or ``max`` are not passed, any value is accepted in that
+    direction. If ``min_open`` or ``max_open`` are enabled, the
+    corresponding boundary is not included in the range.
+
+    If ``clamp`` is enabled, a value outside the range is clamped to the
+    boundary instead of failing. This is not supported if either
+    boundary is marked ``open``.
+
+    .. versionchanged:: 8.0
+        Added the ``min_open`` and ``max_open`` parameters.
     """
 
     name = "float range"
 
-    def __init__(self, min=None, max=None, clamp=False):
-        self.min = min
-        self.max = max
-        self.clamp = clamp
+    def __init__(self, min=None, max=None, min_open=False, max_open=False, clamp=False):
+        super().__init__(
+            min=min, max=max, min_open=min_open, max_open=max_open, clamp=clamp
+        )
 
-    def convert(self, value, param, ctx):
-        rv = FloatParamType.convert(self, value, param, ctx)
-        if self.clamp:
-            if self.min is not None and rv < self.min:
-                return self.min
-            if self.max is not None and rv > self.max:
-                return self.max
-        if (
-            self.min is not None
-            and rv < self.min
-            or self.max is not None
-            and rv > self.max
-        ):
-            if self.min is None:
-                self.fail(
-                    "{} is bigger than the maximum valid value {}.".format(
-                        rv, self.max
-                    ),
-                    param,
-                    ctx,
-                )
-            elif self.max is None:
-                self.fail(
-                    "{} is smaller than the minimum valid value {}.".format(
-                        rv, self.min
-                    ),
-                    param,
-                    ctx,
-                )
-            else:
-                self.fail(
-                    "{} is not in the valid range of {} to {}.".format(
-                        rv, self.min, self.max
-                    ),
-                    param,
-                    ctx,
-                )
-        return rv
+        if (min_open or max_open) and clamp:
+            raise TypeError("Clamping is not supported for open bounds.")
 
-    def __repr__(self):
-        return "FloatRange({}, {})".format(self.min, self.max)
+    def _clamp(self, bound, dir, open):
+        if not open:
+            return bound
+
+        # Could use Python 3.9's math.nextafter here, but clamping an
+        # open float range doesn't seem to be particularly useful. It's
+        # left up to the user to write a callback to do it if needed.
+        raise RuntimeError("Clamping is not supported for open bounds.")
 
 
 class BoolParamType(ParamType):
     name = "boolean"
 
     def convert(self, value, param, ctx):
-        if isinstance(value, bool):
+        if value in {False, True}:
             return bool(value)
-        value = value.lower()
-        if value in ("true", "t", "1", "yes", "y"):
+
+        norm = value.strip().lower()
+
+        if norm in {"1", "true", "t", "yes", "y", "on"}:
             return True
-        elif value in ("false", "f", "0", "no", "n"):
+
+        if norm in {"0", "false", "f", "no", "n", "off"}:
             return False
-        self.fail("{} is not a valid boolean".format(value), param, ctx)
+
+        self.fail(f"{value!r} is not a valid boolean.", param, ctx)
 
     def __repr__(self):
         return "BOOL"
@@ -422,10 +528,15 @@ class UUIDParameterType(ParamType):
     def convert(self, value, param, ctx):
         import uuid
 
+        if isinstance(value, uuid.UUID):
+            return value
+
+        value = value.strip()
+
         try:
             return uuid.UUID(value)
         except ValueError:
-            self.fail("{} is not a valid UUID value".format(value), param, ctx)
+            self.fail(f"{value!r} is not a valid UUID.", param, ctx)
 
     def __repr__(self):
         return "UUID"
@@ -470,6 +581,11 @@ class File(ParamType):
         self.lazy = lazy
         self.atomic = atomic
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict.update(mode=self.mode, encoding=self.encoding)
+        return info_dict
+
     def resolve_lazy_flag(self, value):
         if self.lazy is not None:
             return self.lazy
@@ -508,14 +624,22 @@ class File(ParamType):
                 else:
                     ctx.call_on_close(safecall(f.flush))
             return f
-        except (IOError, OSError) as e:  # noqa: B014
-            self.fail(
-                "Could not open file: {}: {}".format(
-                    filename_to_ui(value), get_streerror(e)
-                ),
-                param,
-                ctx,
-            )
+        except OSError as e:  # noqa: B014
+            self.fail(f"{filename_to_ui(value)!r}: {get_strerror(e)}", param, ctx)
+
+    def shell_complete(self, ctx, param, incomplete):
+        """Return a special completion marker that tells the completion
+        system to use the shell to provide file path completions.
+
+        :param ctx: Invocation context for this command.
+        :param param: The parameter that is requesting completion.
+        :param incomplete: Value being completed. May be empty.
+
+        .. versionadded:: 8.0
+        """
+        from asyncclick.shell_completion import CompletionItem
+
+        return [CompletionItem(incomplete, type="file")]
 
 
 class Path(ParamType):
@@ -581,9 +705,21 @@ class Path(ParamType):
             self.name = "path"
             self.path_type = "Path"
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict.update(
+            exists=self.exists,
+            file_okay=self.file_okay,
+            dir_okay=self.dir_okay,
+            writable=self.writable,
+            readable=self.readable,
+            allow_dash=self.allow_dash,
+        )
+        return info_dict
+
     def coerce_path_result(self, rv):
         if self.type is not None and not isinstance(rv, self.type):
-            if self.type is text_type:
+            if self.type is str:
                 rv = rv.decode(get_filesystem_encoding())
             else:
                 rv = rv.encode(get_filesystem_encoding())
@@ -604,45 +740,53 @@ class Path(ParamType):
                 if not self.exists:
                     return self.coerce_path_result(rv)
                 self.fail(
-                    "{} '{}' does not exist.".format(
-                        self.path_type, filename_to_ui(value)
-                    ),
+                    f"{self.path_type} {filename_to_ui(value)!r} does not exist.",
                     param,
                     ctx,
                 )
 
             if not self.file_okay and stat.S_ISREG(st.st_mode):
                 self.fail(
-                    "{} '{}' is a file.".format(self.path_type, filename_to_ui(value)),
+                    f"{self.path_type} {filename_to_ui(value)!r} is a file.",
                     param,
                     ctx,
                 )
             if not self.dir_okay and stat.S_ISDIR(st.st_mode):
                 self.fail(
-                    "{} '{}' is a directory.".format(
-                        self.path_type, filename_to_ui(value)
-                    ),
+                    f"{self.path_type} {filename_to_ui(value)!r} is a directory.",
                     param,
                     ctx,
                 )
             if self.writable and not os.access(value, os.W_OK):
                 self.fail(
-                    "{} '{}' is not writable.".format(
-                        self.path_type, filename_to_ui(value)
-                    ),
+                    f"{self.path_type} {filename_to_ui(value)!r} is not writable.",
                     param,
                     ctx,
                 )
             if self.readable and not os.access(value, os.R_OK):
                 self.fail(
-                    "{} '{}' is not readable.".format(
-                        self.path_type, filename_to_ui(value)
-                    ),
+                    f"{self.path_type} {filename_to_ui(value)!r} is not readable.",
                     param,
                     ctx,
                 )
 
         return self.coerce_path_result(rv)
+
+    def shell_complete(self, ctx, param, incomplete):
+        """Return a special completion marker that tells the completion
+        system to use the shell to provide path completions for only
+        directories or any paths.
+
+        :param ctx: Invocation context for this command.
+        :param param: The parameter that is requesting completion.
+        :param incomplete: Value being completed. May be empty.
+
+        .. versionadded:: 8.0
+        """
+        from asyncclick.shell_completion import CompletionItem
+
+        type = "dir" if self.dir_okay and not self.file_okay else "file"
+        return [CompletionItem(incomplete, type=type)]
 
 
 class Tuple(CompositeParamType):
@@ -662,9 +806,14 @@ class Tuple(CompositeParamType):
     def __init__(self, types):
         self.types = [convert_type(ty) for ty in types]
 
+    async def to_info_dict(self):
+        info_dict = await super().to_info_dict()
+        info_dict["types"] = [await t.to_info_dict() for t in self.types]
+        return info_dict
+
     @property
     def name(self):
-        return "<{}>".format(" ".join(ty.name for ty in self.types))
+        return f"<{' '.join(ty.name for ty in self.types)}>"
 
     @property
     def arity(self):
@@ -680,54 +829,73 @@ class Tuple(CompositeParamType):
 
 
 def convert_type(ty, default=None):
-    """Converts a callable or python type into the most appropriate
-    param type.
+    """Find the most appropriate :class:`ParamType` for the given Python
+    type. If the type isn't provided, it can be inferred from a default
+    value.
     """
     guessed_type = False
+
     if ty is None and default is not None:
-        if isinstance(default, tuple):
-            ty = tuple(map(type, default))
+        if isinstance(default, (tuple, list)):
+            # If the default is empty, ty will remain None and will
+            # return STRING.
+            if default:
+                item = default[0]
+
+                # A tuple of tuples needs to detect the inner types.
+                # Can't call convert recursively because that would
+                # incorrectly unwind the tuple to a single type.
+                if isinstance(item, (tuple, list)):
+                    ty = tuple(map(type, item))
+                else:
+                    ty = type(item)
         else:
             ty = type(default)
+
         guessed_type = True
 
     if isinstance(ty, tuple):
         return Tuple(ty)
+
     if isinstance(ty, ParamType):
         return ty
-    if ty is text_type or ty is str or ty is None:
+
+    if ty is str or ty is None:
         return STRING
+
     if ty is int:
         return INT
-    # Booleans are only okay if not guessed.  This is done because for
-    # flags the default value is actually a bit of a lie in that it
-    # indicates which of the flags is the one we want.  See get_default()
-    # for more information.
-    if ty is bool and not guessed_type:
-        return BOOL
+
     if ty is float:
         return FLOAT
+
+    # Booleans are only okay if not guessed. For is_flag options with
+    # flag_value, default=True indicates which flag_value is the
+    # default.
+    if ty is bool and not guessed_type:
+        return BOOL
+
     if guessed_type:
         return STRING
 
-    # Catch a common mistake
     if __debug__:
         try:
             if issubclass(ty, ParamType):
                 raise AssertionError(
-                    "Attempted to use an uninstantiated parameter type ({}).".format(ty)
+                    f"Attempted to use an uninstantiated parameter type ({ty})."
                 )
         except TypeError:
+            # ty is an instance (correct), so issubclass fails.
             pass
+
     return FuncParamType(ty)
 
 
 #: A dummy parameter type that just does nothing.  From a user's
-#: perspective this appears to just be the same as `STRING` but internally
-#: no string conversion takes place.  This is necessary to achieve the
-#: same bytes/unicode behavior on Python 2/3 in situations where you want
-#: to not convert argument types.  This is usually useful when working
-#: with file paths as they can appear in bytes and unicode.
+#: perspective this appears to just be the same as `STRING` but
+#: internally no string conversion takes place if the input was bytes.
+#: This is usually useful when working with file paths as they can
+#: appear in bytes and unicode.
 #:
 #: For path related uses the :class:`Path` type is a better choice but
 #: there are situations where an unprocessed type is useful which is why

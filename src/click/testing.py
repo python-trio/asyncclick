@@ -1,4 +1,5 @@
 import contextlib
+import io
 import os
 import shlex
 import shutil
@@ -8,20 +9,10 @@ import tempfile
 from . import formatting
 from . import termui
 from . import utils
-from ._compat import iteritems
-from ._compat import string_types
-
-
-import io
 from ._compat import _find_binary_reader
 
-def debug():
-    import pdb,sys
-    stdin = getattr(sys,'old_stdin',sys.stdin)
-    stdout = getattr(sys,'old_stdout',sys.stdout)
-    pdb.Pdb(stdin=stdin, stdout=stdout).set_trace(sys._getframe().f_back)
 
-class EchoingStdin(object):
+class EchoingStdin:
     def __init__(self, input, output):
         self._input = input
         self._output = output
@@ -49,12 +40,29 @@ class EchoingStdin(object):
         return repr(self._input)
 
 
+class _NamedTextIOWrapper(io.TextIOWrapper):
+    def __init__(self, buffer, name=None, mode=None, **kwargs):
+        super().__init__(buffer, **kwargs)
+        self._name = name
+        self._mode = mode
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def mode(self):
+        return self._mode
+
+
 def make_input_stream(input, charset):
     # Is already an input stream.
     if hasattr(input, "read"):
         rv = _find_binary_reader(input)
+
         if rv is not None:
             return rv
+
         raise TypeError("Could not find binary reader for input stream.")
 
     if input is None:
@@ -64,11 +72,18 @@ def make_input_stream(input, charset):
     return io.BytesIO(input)
 
 
-class Result(object):
+class Result:
     """Holds the captured result of an invoked CLI script."""
 
     def __init__(
-        self, runner, stdout_bytes, stderr_bytes, exit_code, exception, exc_info=None
+        self,
+        runner,
+        stdout_bytes,
+        stderr_bytes,
+        return_value,
+        exit_code,
+        exception,
+        exc_info=None,
     ):
         #: The runner that created the result
         self.runner = runner
@@ -76,6 +91,10 @@ class Result(object):
         self.stdout_bytes = stdout_bytes
         #: The standard error as bytes, or None if not available
         self.stderr_bytes = stderr_bytes
+        #: The value returned from the invoked command.
+        #:
+        #: .. versionadded:: 8.0
+        self.return_value = return_value
         #: The exit code as integer.
         self.exit_code = exit_code
         #: The exception that happened if one did.
@@ -105,20 +124,17 @@ class Result(object):
         )
 
     def __repr__(self):
-        return "<{} {}>".format(
-            type(self).__name__, repr(self.exception) if self.exception else "okay"
-        )
+        exc_str = repr(self.exception) if self.exception else "okay"
+        return f"<{type(self).__name__} {exc_str}>"
 
 
-class CliRunner(object):
+class CliRunner:
     """The CLI runner provides functionality to invoke a Click command line
     script for unittesting purposes in a isolated environment.  This only
     works in single-threaded systems without any concurrency as it changes the
     global interpreter state.
 
-    :param charset: the character set for the input and output data.  This is
-                    UTF-8 by default and should not be changed currently as
-                    the reporting to Click only works in Python 2 properly.
+    :param charset: the character set for the input and output data.
     :param env: a dictionary with environment variables for overriding.
     :param echo_stdin: if this is set to `True`, then reading from stdin writes
                        to stdout.  This is useful for showing examples in
@@ -131,9 +147,7 @@ class CliRunner(object):
                        independently
     """
 
-    def __init__(self, charset=None, env=None, echo_stdin=False, mix_stderr=True):
-        if charset is None:
-            charset = "utf-8"
+    def __init__(self, charset="utf-8", env=None, echo_stdin=False, mix_stderr=True):
         self.charset = charset
         self.env = env or {}
         self.echo_stdin = echo_stdin
@@ -184,30 +198,35 @@ class CliRunner(object):
 
         env = self.make_env(env)
 
-        if True: # !PY2 # indent kept for good mergeability
-            bytes_output = io.BytesIO()
-            if self.echo_stdin:
-                input = EchoingStdin(input, bytes_output)
-            input = io.TextIOWrapper(input, encoding=self.charset)
-            sys.stdout = io.TextIOWrapper(bytes_output, encoding=self.charset)
-            if not self.mix_stderr:
-                bytes_error = io.BytesIO()
-                sys.stderr = io.TextIOWrapper(bytes_error, encoding=self.charset)
+        bytes_output = io.BytesIO()
+
+        if self.echo_stdin:
+            input = EchoingStdin(input, bytes_output)
+
+        sys.stdin = input = _NamedTextIOWrapper(
+            input, encoding=self.charset, name="<stdin>", mode="r"
+        )
+        sys.stdout = _NamedTextIOWrapper(
+            bytes_output, encoding=self.charset, name="<stdout>", mode="w"
+        )
 
         if self.mix_stderr:
             sys.stderr = sys.stdout
-
-        sys.stdin = input
+        else:
+            bytes_error = io.BytesIO()
+            sys.stderr = _NamedTextIOWrapper(
+                bytes_error, encoding=self.charset, name="<stderr>", mode="w"
+            )
 
         def visible_input(prompt=None):
             sys.stdout.write(prompt or "")
             val = input.readline().rstrip("\r\n")
-            sys.stdout.write("{}\n".format(val))
+            sys.stdout.write(f"{val}\n")
             sys.stdout.flush()
             return val
 
         def hidden_input(prompt=None):
-            sys.stdout.write("{}\n".format(prompt or ""))
+            sys.stdout.write(f"{prompt or ''}\n")
             sys.stdout.flush()
             return input.readline().rstrip("\r\n")
 
@@ -236,7 +255,7 @@ class CliRunner(object):
 
         old_env = {}
         try:
-            for key, value in iteritems(env):
+            for key, value in env.items():
                 old_env[key] = os.environ.get(key)
                 if value is None:
                     try:
@@ -247,7 +266,7 @@ class CliRunner(object):
                     os.environ[key] = value
             yield (bytes_output, not self.mix_stderr and bytes_error)
         finally:
-            for key, value in iteritems(old_env):
+            for key, value in old_env.items():
                 if value is None:
                     try:
                         del os.environ[key]
@@ -275,7 +294,7 @@ class CliRunner(object):
         env=None,
         catch_exceptions=True,
         color=False,
-        **extra
+        **extra,
     ):
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
@@ -283,16 +302,6 @@ class CliRunner(object):
         the command.
 
         This returns a :class:`Result` object.
-
-        .. versionadded:: 3.0
-           The ``catch_exceptions`` parameter was added.
-
-        .. versionchanged:: 3.0
-           The result object now has an `exc_info` attribute with the
-           traceback if available.
-
-        .. versionadded:: 4.0
-           The ``color`` parameter was added.
 
         :param cli: the command to invoke
         :param args: the arguments to invoke. It may be given as an iterable
@@ -306,13 +315,28 @@ class CliRunner(object):
         :param extra: the keyword arguments to pass to :meth:`main`.
         :param color: whether the output should contain color codes. The
                       application can still override this explicitly.
+
+        .. versionchanged:: 8.0
+            The result object has the ``return_value`` attribute with
+            the value returned from the invoked command.
+
+        .. versionchanged:: 4.0
+            Added the ``color`` parameter.
+
+        .. versionchanged:: 3.0
+            Added the ``catch_exceptions`` parameter.
+
+        .. versionchanged:: 3.0
+            The result object has the ``exc_info`` attribute with the
+            traceback if available.
         """
         exc_info = None
         with self.isolation(input=input, env=env, color=color) as outstreams:
+            return_value = None
             exception = None
             exit_code = 0
 
-            if isinstance(args, string_types):
+            if isinstance(args, str):
                 args = shlex.split(args)
 
             try:
@@ -321,7 +345,7 @@ class CliRunner(object):
                 prog_name = self.get_default_prog_name(cli)
 
             try:
-                await cli.main(args=args or (), prog_name=prog_name, **extra)
+                return_value = await cli.main(args=args or (), prog_name=prog_name, **extra)
             except SystemExit as e:
                 exc_info = sys.exc_info()
                 exit_code = e.code
@@ -354,6 +378,7 @@ class CliRunner(object):
             runner=self,
             stdout_bytes=stdout,
             stderr_bytes=stderr,
+            return_value=return_value,
             exit_code=exit_code,
             exception=exception,
             exc_info=exc_info,
@@ -373,5 +398,5 @@ class CliRunner(object):
             os.chdir(cwd)
             try:
                 shutil.rmtree(t)
-            except (OSError, IOError):  # noqa: B014
+            except OSError:  # noqa: B014
                 pass

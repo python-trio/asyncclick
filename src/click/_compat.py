@@ -1,4 +1,3 @@
-# flake8: noqa
 import codecs
 import io
 import os
@@ -14,8 +13,9 @@ APP_ENGINE = "APPENGINE_RUNTIME" in os.environ and "Development/" in os.environ.
 )
 WIN = sys.platform.startswith("win") and not APP_ENGINE and not MSYS2
 DEFAULT_COLUMNS = 80
-
-
+auto_wrap_for_ansi = None
+colorama = None
+get_winterm_size = None
 _ansi_re = re.compile(r"\033\[[;?0-9]*[a-zA-Z]")
 
 
@@ -64,14 +64,11 @@ class _NonClosingTextIOWrapper(io.TextIOWrapper):
         errors,
         force_readable=False,
         force_writable=False,
-        **extra
+        **extra,
     ):
         self._stream = stream = _FixupStream(stream, force_readable, force_writable)
-        io.TextIOWrapper.__init__(self, stream, encoding, errors, **extra)
+        super().__init__(stream, encoding, errors, **extra)
 
-    # The io module is a place where the Python 3 text behavior
-    # was forced upon Python 2, so we need to unbreak
-    # it to look like Python 2.
     def __del__(self):
         try:
             self.detach()
@@ -83,7 +80,7 @@ class _NonClosingTextIOWrapper(io.TextIOWrapper):
         return self._stream.isatty()
 
 
-class _FixupStream(object):
+class _FixupStream:
     """The new io interface needs more from streams than streams
     traditionally implement.  As such, this fix-up code is necessary in
     some circumstances.
@@ -105,9 +102,7 @@ class _FixupStream(object):
         f = getattr(self._stream, "read1", None)
         if f is not None:
             return f(size)
-        # We only dispatch to readline instead of read in Python 2 as we
-        # do not want cause problems with the different implementation
-        # of line buffering.
+
         return self._stream.read(size)
 
     def readable(self):
@@ -148,211 +143,207 @@ class _FixupStream(object):
         return True
 
 
-if True: # !py2 # kept indented for easier mergeability
-    import io
+def is_bytes(x):
+    return isinstance(x, (bytes, memoryview, bytearray))
 
-    text_type = str
-    raw_input = input
-    string_types = (str,)
-    int_types = (int,)
-    range_type = range
-    isidentifier = lambda x: x.isidentifier()
-    iteritems = lambda x: iter(x.items())
 
-    def is_bytes(x):
-        return isinstance(x, (bytes, memoryview, bytearray))
+def _is_binary_reader(stream, default=False):
+    try:
+        return isinstance(stream.read(0), bytes)
+    except Exception:
+        return default
+        # This happens in some cases where the stream was already
+        # closed.  In this case, we assume the default.
 
-    def _is_binary_reader(stream, default=False):
+
+def _is_binary_writer(stream, default=False):
+    try:
+        stream.write(b"")
+    except Exception:
         try:
-            return isinstance(stream.read(0), bytes)
+            stream.write("")
+            return False
         except Exception:
-            return default
-            # This happens in some cases where the stream was already
-            # closed.  In this case, we assume the default.
+            pass
+        return default
+    return True
 
-    def _is_binary_writer(stream, default=False):
-        try:
-            stream.write(b"")
-        except Exception:
-            try:
-                stream.write("")
-                return False
-            except Exception:
-                pass
-            return default
-        return True
 
-    def _find_binary_reader(stream):
-        # We need to figure out if the given stream is already binary.
-        # This can happen because the official docs recommend detaching
-        # the streams to get binary streams.  Some code might do this, so
-        # we need to deal with this case explicitly.
-        if _is_binary_reader(stream, False):
-            return stream
+def _find_binary_reader(stream):
+    # We need to figure out if the given stream is already binary.
+    # This can happen because the official docs recommend detaching
+    # the streams to get binary streams.  Some code might do this, so
+    # we need to deal with this case explicitly.
+    if _is_binary_reader(stream, False):
+        return stream
 
-        buf = getattr(stream, "buffer", None)
+    buf = getattr(stream, "buffer", None)
 
-        # Same situation here; this time we assume that the buffer is
-        # actually binary in case it's closed.
-        if buf is not None and _is_binary_reader(buf, True):
-            return buf
+    # Same situation here; this time we assume that the buffer is
+    # actually binary in case it's closed.
+    if buf is not None and _is_binary_reader(buf, True):
+        return buf
 
-    def _find_binary_writer(stream):
-        # We need to figure out if the given stream is already binary.
-        # This can happen because the official docs recommend detatching
-        # the streams to get binary streams.  Some code might do this, so
-        # we need to deal with this case explicitly.
-        if _is_binary_writer(stream, False):
-            return stream
 
-        buf = getattr(stream, "buffer", None)
+def _find_binary_writer(stream):
+    # We need to figure out if the given stream is already binary.
+    # This can happen because the official docs recommend detaching
+    # the streams to get binary streams.  Some code might do this, so
+    # we need to deal with this case explicitly.
+    if _is_binary_writer(stream, False):
+        return stream
 
-        # Same situation here; this time we assume that the buffer is
-        # actually binary in case it's closed.
-        if buf is not None and _is_binary_writer(buf, True):
-            return buf
+    buf = getattr(stream, "buffer", None)
 
-    def _stream_is_misconfigured(stream):
-        """A stream is misconfigured if its encoding is ASCII."""
-        # If the stream does not have an encoding set, we assume it's set
-        # to ASCII.  This appears to happen in certain unittest
-        # environments.  It's not quite clear what the correct behavior is
-        # but this at least will force Click to recover somehow.
-        return is_ascii_encoding(getattr(stream, "encoding", None) or "ascii")
+    # Same situation here; this time we assume that the buffer is
+    # actually binary in case it's closed.
+    if buf is not None and _is_binary_writer(buf, True):
+        return buf
 
-    def _is_compat_stream_attr(stream, attr, value):
-        """A stream attribute is compatible if it is equal to the
-        desired value or the desired value is unset and the attribute
-        has a value.
-        """
-        stream_value = getattr(stream, attr, None)
-        return stream_value == value or (value is None and stream_value is not None)
 
-    def _is_compatible_text_stream(stream, encoding, errors):
-        """Check if a stream's encoding and errors attributes are
-        compatible with the desired values.
-        """
-        return _is_compat_stream_attr(
-            stream, "encoding", encoding
-        ) and _is_compat_stream_attr(stream, "errors", errors)
+def _stream_is_misconfigured(stream):
+    """A stream is misconfigured if its encoding is ASCII."""
+    # If the stream does not have an encoding set, we assume it's set
+    # to ASCII.  This appears to happen in certain unittest
+    # environments.  It's not quite clear what the correct behavior is
+    # but this at least will force Click to recover somehow.
+    return is_ascii_encoding(getattr(stream, "encoding", None) or "ascii")
 
-    def _force_correct_text_stream(
-        text_stream,
+
+def _is_compat_stream_attr(stream, attr, value):
+    """A stream attribute is compatible if it is equal to the
+    desired value or the desired value is unset and the attribute
+    has a value.
+    """
+    stream_value = getattr(stream, attr, None)
+    return stream_value == value or (value is None and stream_value is not None)
+
+
+def _is_compatible_text_stream(stream, encoding, errors):
+    """Check if a stream's encoding and errors attributes are
+    compatible with the desired values.
+    """
+    return _is_compat_stream_attr(
+        stream, "encoding", encoding
+    ) and _is_compat_stream_attr(stream, "errors", errors)
+
+
+def _force_correct_text_stream(
+    text_stream,
+    encoding,
+    errors,
+    is_binary,
+    find_binary,
+    force_readable=False,
+    force_writable=False,
+):
+    if is_binary(text_stream, False):
+        binary_reader = text_stream
+    else:
+        # If the stream looks compatible, and won't default to a
+        # misconfigured ascii encoding, return it as-is.
+        if _is_compatible_text_stream(text_stream, encoding, errors) and not (
+            encoding is None and _stream_is_misconfigured(text_stream)
+        ):
+            return text_stream
+
+        # Otherwise, get the underlying binary reader.
+        binary_reader = find_binary(text_stream)
+
+        # If that's not possible, silently use the original reader
+        # and get mojibake instead of exceptions.
+        if binary_reader is None:
+            return text_stream
+
+    # Default errors to replace instead of strict in order to get
+    # something that works.
+    if errors is None:
+        errors = "replace"
+
+    # Wrap the binary stream in a text stream with the correct
+    # encoding parameters.
+    return _make_text_stream(
+        binary_reader,
         encoding,
         errors,
-        is_binary,
-        find_binary,
-        force_readable=False,
-        force_writable=False,
-    ):
-        if is_binary(text_stream, False):
-            binary_reader = text_stream
-        else:
-            # If the stream looks compatible, and won't default to a
-            # misconfigured ascii encoding, return it as-is.
-            if _is_compatible_text_stream(text_stream, encoding, errors) and not (
-                encoding is None and _stream_is_misconfigured(text_stream)
-            ):
-                return text_stream
-
-            # Otherwise, get the underlying binary reader.
-            binary_reader = find_binary(text_stream)
-
-            # If that's not possible, silently use the original reader
-            # and get mojibake instead of exceptions.
-            if binary_reader is None:
-                return text_stream
-
-        # Default errors to replace instead of strict in order to get
-        # something that works.
-        if errors is None:
-            errors = "replace"
-
-        # Wrap the binary stream in a text stream with the correct
-        # encoding parameters.
-        return _make_text_stream(
-            binary_reader,
-            encoding,
-            errors,
-            force_readable=force_readable,
-            force_writable=force_writable,
-        )
-
-    def _force_correct_text_reader(text_reader, encoding, errors, force_readable=False):
-        return _force_correct_text_stream(
-            text_reader,
-            encoding,
-            errors,
-            _is_binary_reader,
-            _find_binary_reader,
-            force_readable=force_readable,
-        )
-
-    def _force_correct_text_writer(text_writer, encoding, errors, force_writable=False):
-        return _force_correct_text_stream(
-            text_writer,
-            encoding,
-            errors,
-            _is_binary_writer,
-            _find_binary_writer,
-            force_writable=force_writable,
-        )
-
-    def get_binary_stdin():
-        reader = _find_binary_reader(sys.stdin)
-        if reader is None:
-            raise RuntimeError("Was not able to determine binary stream for sys.stdin.")
-        return reader
-
-    def get_binary_stdout():
-        writer = _find_binary_writer(sys.stdout)
-        if writer is None:
-            raise RuntimeError(
-                "Was not able to determine binary stream for sys.stdout."
-            )
-        return writer
-
-    def get_binary_stderr():
-        writer = _find_binary_writer(sys.stderr)
-        if writer is None:
-            raise RuntimeError(
-                "Was not able to determine binary stream for sys.stderr."
-            )
-        return writer
-
-    def get_text_stdin(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stdin, encoding, errors)
-        if rv is not None:
-            return rv
-        return _force_correct_text_reader(
-            sys.stdin, encoding, errors, force_readable=True
-        )
-
-    def get_text_stdout(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stdout, encoding, errors)
-        if rv is not None:
-            return rv
-        return _force_correct_text_writer(
-            sys.stdout, encoding, errors, force_writable=True
-        )
-
-    def get_text_stderr(encoding=None, errors=None):
-        rv = _get_windows_console_stream(sys.stderr, encoding, errors)
-        if rv is not None:
-            return rv
-        return _force_correct_text_writer(
-            sys.stderr, encoding, errors, force_writable=True
-        )
-
-    def filename_to_ui(value):
-        if isinstance(value, bytes):
-            value = value.decode(get_filesystem_encoding(), "replace")
-        else:
-            value = value.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
-        return value
+        force_readable=force_readable,
+        force_writable=force_writable,
+    )
 
 
-def get_streerror(e, default=None):
+def _force_correct_text_reader(text_reader, encoding, errors, force_readable=False):
+    return _force_correct_text_stream(
+        text_reader,
+        encoding,
+        errors,
+        _is_binary_reader,
+        _find_binary_reader,
+        force_readable=force_readable,
+    )
+
+
+def _force_correct_text_writer(text_writer, encoding, errors, force_writable=False):
+    return _force_correct_text_stream(
+        text_writer,
+        encoding,
+        errors,
+        _is_binary_writer,
+        _find_binary_writer,
+        force_writable=force_writable,
+    )
+
+
+def get_binary_stdin():
+    reader = _find_binary_reader(sys.stdin)
+    if reader is None:
+        raise RuntimeError("Was not able to determine binary stream for sys.stdin.")
+    return reader
+
+
+def get_binary_stdout():
+    writer = _find_binary_writer(sys.stdout)
+    if writer is None:
+        raise RuntimeError("Was not able to determine binary stream for sys.stdout.")
+    return writer
+
+
+def get_binary_stderr():
+    writer = _find_binary_writer(sys.stderr)
+    if writer is None:
+        raise RuntimeError("Was not able to determine binary stream for sys.stderr.")
+    return writer
+
+
+def get_text_stdin(encoding=None, errors=None):
+    rv = _get_windows_console_stream(sys.stdin, encoding, errors)
+    if rv is not None:
+        return rv
+    return _force_correct_text_reader(sys.stdin, encoding, errors, force_readable=True)
+
+
+def get_text_stdout(encoding=None, errors=None):
+    rv = _get_windows_console_stream(sys.stdout, encoding, errors)
+    if rv is not None:
+        return rv
+    return _force_correct_text_writer(sys.stdout, encoding, errors, force_writable=True)
+
+
+def get_text_stderr(encoding=None, errors=None):
+    rv = _get_windows_console_stream(sys.stderr, encoding, errors)
+    if rv is not None:
+        return rv
+    return _force_correct_text_writer(sys.stderr, encoding, errors, force_writable=True)
+
+
+def filename_to_ui(value):
+    if isinstance(value, bytes):
+        value = value.decode(get_filesystem_encoding(), "replace")
+    else:
+        value = value.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+    return value
+
+
+def get_strerror(e, default=None):
     if hasattr(e, "strerror"):
         msg = e.strerror
     else:
@@ -366,21 +357,11 @@ def get_streerror(e, default=None):
 
 
 def _wrap_io_open(file, mode, encoding, errors):
-    """On Python 2, :func:`io.open` returns a text file wrapper that
-    requires passing ``unicode`` to ``write``. Need to open the file in
-    binary mode then wrap it in a subclass that can write ``str`` and
-    ``unicode``.
+    """Handles not passing ``encoding`` and ``errors`` in binary mode."""
+    if "b" in mode:
+        return open(file, mode)
 
-    Also handles not passing ``encoding`` and ``errors`` in binary mode.
-    """
-    binary = "b" in mode
-
-    if binary:
-        kwargs = {}
-    else:
-        kwargs = {"encoding": encoding, "errors": errors}
-
-    return io.open(file, mode, **kwargs)
+    return open(file, mode, encoding=encoding, errors=errors)
 
 
 def open_stream(filename, mode="r", encoding=None, errors="strict", atomic=False):
@@ -434,7 +415,7 @@ def open_stream(filename, mode="r", encoding=None, errors="strict", atomic=False
     while True:
         tmp_filename = os.path.join(
             os.path.dirname(filename),
-            ".__atomic-write{:08x}".format(random.randrange(1 << 32)),
+            f".__atomic-write{random.randrange(1 << 32):08x}",
         )
         try:
             fd = os.open(tmp_filename, flags, 0o666 if perm is None else perm)
@@ -456,16 +437,7 @@ def open_stream(filename, mode="r", encoding=None, errors="strict", atomic=False
     return _AtomicFile(f, tmp_filename, os.path.realpath(filename)), True
 
 
-# Used in a destructor call, needs extra protection from interpreter cleanup.
-if hasattr(os, "replace"):
-    _replace = os.replace
-    _can_replace = True
-else:
-    _replace = os.rename
-    _can_replace = not WIN
-
-
-class _AtomicFile(object):
+class _AtomicFile:
     def __init__(self, f, tmp_filename, real_filename):
         self._f = f
         self._tmp_filename = tmp_filename
@@ -480,12 +452,7 @@ class _AtomicFile(object):
         if self.closed:
             return
         self._f.close()
-        if not _can_replace:
-            try:
-                os.remove(self._real_filename)
-            except OSError:
-                pass
-        _replace(self._tmp_filename, self._real_filename)
+        os.replace(self._tmp_filename, self._real_filename)
         self.closed = True
 
     def __getattr__(self, name):
@@ -499,11 +466,6 @@ class _AtomicFile(object):
 
     def __repr__(self):
         return repr(self._f)
-
-
-auto_wrap_for_ansi = None
-colorama = None
-get_winterm_size = None
 
 
 def strip_ansi(value):
@@ -571,7 +533,7 @@ if WIN:
             def _safe_write(s):
                 try:
                     return _write(s)
-                except:
+                except BaseException:
                     ansi_wrapper.reset_all()
                     raise
 
@@ -594,7 +556,8 @@ else:
     def _get_argv_encoding():
         return getattr(sys.stdin, "encoding", None) or get_filesystem_encoding()
 
-    _get_windows_console_stream = lambda *x: None
+    def _get_windows_console_stream(f, encoding, errors):
+        return None
 
 
 def term_len(x):

@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
+import platform
 import time
 
 import pytest
 
 import asyncclick as click
 import asyncclick._termui_impl
-from click._compat import WIN
+from asyncclick._compat import WIN
 
 
-class FakeClock(object):
+class FakeClock:
     def __init__(self):
         self.now = time.time()
 
@@ -43,7 +43,7 @@ def test_progressbar_strip_regression(runner, monkeypatch):
 
 
 def test_progressbar_length_hint(runner, monkeypatch):
-    class Hinted(object):
+    class Hinted:
         def __init__(self, n):
             self.items = list(range(n))
 
@@ -124,7 +124,7 @@ def test_progressbar_format_pos(runner, pos, length):
     with _create_progress(length, length_known=length != 0, pos=pos) as progress:
         result = progress.format_pos()
         if progress.length_known:
-            assert result == "{}/{}".format(pos, length)
+            assert result == f"{pos}/{length}"
         else:
             assert result == str(pos)
 
@@ -249,7 +249,7 @@ def test_file_prompt_default_format(runner, file_kwargs):
         click.echo(f.name)
 
     result = runner.invoke(cli)
-    assert result.output == "file [{0}]: \n{0}\n".format(__file__)
+    assert result.output == f"file [{__file__}]: \n{__file__}\n"
 
 
 def test_secho(runner):
@@ -257,6 +257,17 @@ def test_secho(runner):
         click.secho(None, nl=False)
         bytes = outstreams[0].getvalue()
         assert bytes == b""
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="No style on Windows.")
+@pytest.mark.parametrize(
+    ("value", "expect"), [(123, b"\x1b[45m123\x1b[0m"), (b"test", b"test")]
+)
+def test_secho_non_text(runner, value, expect):
+    with runner.isolation() as (out, _):
+        click.secho(value, nl=False, color=True, bg="magenta")
+        result = out.getvalue()
+        assert result == expect
 
 
 def test_progressbar_yields_all_items(runner):
@@ -286,7 +297,65 @@ def test_progressbar_update(runner, monkeypatch):
     assert "100%          " in lines[3]
 
 
-@pytest.mark.parametrize("key_char", (u"h", u"H", u"é", u"À", u" ", u"字", u"àH", u"àR"))
+def test_progressbar_item_show_func(runner, monkeypatch):
+    fake_clock = FakeClock()
+
+    @click.command()
+    def cli():
+        with click.progressbar(
+            range(4), item_show_func=lambda x: f"Custom {x}"
+        ) as progress:
+            for _ in progress:
+                fake_clock.advance_time()
+                print("")
+
+    monkeypatch.setattr(time, "time", fake_clock.time)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    output = runner.invoke(cli, []).output
+
+    lines = [line for line in output.split("\n") if "[" in line]
+
+    assert "Custom 0" in lines[0]
+    assert "Custom 1" in lines[1]
+    assert "Custom 2" in lines[2]
+    assert "Custom None" in lines[3]
+
+
+def test_progressbar_update_with_item_show_func(runner, monkeypatch):
+    fake_clock = FakeClock()
+
+    @click.command()
+    def cli():
+        with click.progressbar(
+            length=6, item_show_func=lambda x: f"Custom {x}"
+        ) as progress:
+            while not progress.finished:
+                fake_clock.advance_time()
+                progress.update(2, progress.pos)
+                print("")
+
+    monkeypatch.setattr(time, "time", fake_clock.time)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    output = runner.invoke(cli, []).output
+
+    lines = [line for line in output.split("\n") if "[" in line]
+
+    assert "Custom 0" in lines[0]
+    assert "Custom 2" in lines[1]
+    assert "Custom 4" in lines[2]
+
+
+def test_progress_bar_update_min_steps(runner):
+    bar = _create_progress(update_min_steps=5)
+    bar.update(3)
+    assert bar._completed_intervals == 3
+    assert bar.pos == 0
+    bar.update(2)
+    assert bar._completed_intervals == 0
+    assert bar.pos == 5
+
+
+@pytest.mark.parametrize("key_char", ("h", "H", "é", "À", " ", "字", "àH", "àR"))
 @pytest.mark.parametrize("echo", [True, False])
 @pytest.mark.skipif(not WIN, reason="Tests user-input using the msvcrt module.")
 def test_getchar_windows(runner, monkeypatch, key_char, echo):
@@ -297,7 +366,7 @@ def test_getchar_windows(runner, monkeypatch, key_char, echo):
 
 
 @pytest.mark.parametrize(
-    "special_key_char, key_char", [(u"\x00", "a"), (u"\x00", "b"), (u"\xe0", "c")]
+    "special_key_char, key_char", [("\x00", "a"), ("\x00", "b"), ("\xe0", "c")]
 )
 @pytest.mark.skipif(
     not WIN, reason="Tests special character inputs using the msvcrt module."
@@ -308,11 +377,11 @@ def test_getchar_special_key_windows(runner, monkeypatch, special_key_char, key_
         asyncclick._termui_impl.msvcrt, "getwch", lambda: ordered_inputs.pop()
     )
     monkeypatch.setattr(click.termui, "_getchar", None)
-    assert click.getchar() == special_key_char + key_char
+    assert click.getchar() == f"{special_key_char}{key_char}"
 
 
 @pytest.mark.parametrize(
-    ("key_char", "exc"), [(u"\x03", KeyboardInterrupt), (u"\x1a", EOFError)],
+    ("key_char", "exc"), [("\x03", KeyboardInterrupt), ("\x1a", EOFError)],
 )
 @pytest.mark.skipif(not WIN, reason="Tests user-input using the msvcrt module.")
 def test_getchar_windows_exceptions(runner, monkeypatch, key_char, exc):
@@ -321,3 +390,60 @@ def test_getchar_windows_exceptions(runner, monkeypatch, key_char, exc):
 
     with pytest.raises(exc):
         click.getchar()
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="No sed on Windows.")
+def test_fast_edit(runner):
+    result = click.edit("a\nb", editor="sed -i~ 's/$/Test/'")
+    assert result == "aTest\nbTest\n"
+
+
+@pytest.mark.parametrize(
+    ("prompt_required", "required", "args", "expect"),
+    [
+        (True, False, None, "prompt"),
+        (True, False, ["-v"], "-v option requires an argument"),
+        (False, True, None, "prompt"),
+        (False, True, ["-v"], "prompt"),
+    ],
+)
+def test_prompt_required_with_required(runner, prompt_required, required, args, expect):
+    @click.command()
+    @click.option("-v", prompt=True, prompt_required=prompt_required, required=required)
+    def cli(v):
+        click.echo(str(v))
+
+    result = runner.invoke(cli, args, input="prompt")
+    assert expect in result.output
+
+
+@pytest.mark.parametrize(
+    ("args", "expect"),
+    [
+        # Flag not passed, don't prompt.
+        pytest.param(None, None, id="no flag"),
+        # Flag and value passed, don't prompt.
+        pytest.param(["-v", "value"], "value", id="short sep value"),
+        pytest.param(["--value", "value"], "value", id="long sep value"),
+        pytest.param(["-vvalue"], "value", id="short join value"),
+        pytest.param(["--value=value"], "value", id="long join value"),
+        # Flag without value passed, prompt.
+        pytest.param(["-v"], "prompt", id="short no value"),
+        pytest.param(["--value"], "prompt", id="long no value"),
+        # Don't use next option flag as value.
+        pytest.param(["-v", "-o", "42"], ("prompt", "42"), id="no value opt"),
+    ],
+)
+def test_prompt_required_false(runner, args, expect):
+    @click.command()
+    @click.option("-v", "--value", prompt=True, prompt_required=False)
+    @click.option("-o")
+    def cli(value, o):
+        if o is not None:
+            return value, o
+
+        return value
+
+    result = runner.invoke(cli, args=args, input="prompt", standalone_mode=False)
+    assert result.exception is None
+    assert result.return_value == expect

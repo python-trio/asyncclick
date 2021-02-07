@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import re
 from inspect import iscoroutine
 
@@ -28,7 +27,7 @@ async def test_other_command_forward(runner):
     @cli.command()
     @click.option("--count", default=1)
     def test(count):
-        click.echo("Count: {:d}".format(count))
+        click.echo(f"Count: {count:d}")
 
     @cli.command()
     @click.option("--count", default=1)
@@ -105,7 +104,7 @@ def test_group_with_args(runner):
     @click.group()
     @click.argument("obj")
     def cli(obj):
-        click.echo("obj={}".format(obj))
+        click.echo(f"obj={obj}")
 
     @cli.command()
     def move():
@@ -137,7 +136,7 @@ def test_base_command(runner):
 
     class OptParseCommand(click.BaseCommand):
         def __init__(self, name, parser, callback):
-            click.BaseCommand.__init__(self, name)
+            super().__init__(name)
             self.parser = parser
             self.callback = callback
 
@@ -216,7 +215,7 @@ def test_object_propagation(runner):
         @cli.command()
         @click.pass_context
         def sync(ctx):
-            click.echo("Debug is {}".format("on" if ctx.obj["DEBUG"] else "off"))
+            click.echo(f"Debug is {'on' if ctx.obj['DEBUG'] else 'off'}")
 
         result = runner.invoke(cli, ["sync"])
         assert result.exception is None
@@ -264,13 +263,29 @@ def test_invoked_subcommand(runner):
     assert result.output == "no subcommand, use default\nin subcommand\n"
 
 
+def test_aliased_command_canonical_name(runner):
+    class AliasedGroup(click.Group):
+        def get_command(self, ctx, cmd_name):
+            return push
+
+    cli = AliasedGroup()
+
+    @cli.command()
+    def push():
+        click.echo("push command")
+
+    result = runner.invoke(cli, ["pu", "--help"])
+    assert not result.exception
+    assert result.output.startswith("Usage: root push [OPTIONS]")
+
+
 def test_unprocessed_options(runner):
     @click.command(context_settings=dict(ignore_unknown_options=True))
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     @click.option("--verbose", "-v", count=True)
     def cli(verbose, args):
-        click.echo("Verbosity: {}".format(verbose))
-        click.echo("Args: {}".format("|".join(args)))
+        click.echo(f"Verbosity: {verbose}")
+        click.echo(f"Args: {'|'.join(args)}")
 
     result = runner.invoke(cli, ["-foo", "-vvvvx", "--muhaha", "x", "y", "-x"])
     assert not result.exception

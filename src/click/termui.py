@@ -7,24 +7,21 @@ import sys
 
 from ._compat import DEFAULT_COLUMNS
 from ._compat import get_winterm_size
+from ._compat import is_bytes
 from ._compat import isatty
-from ._compat import raw_input
-from ._compat import string_types
 from ._compat import strip_ansi
-from ._compat import text_type
 from ._compat import WIN
 from .exceptions import Abort
 from .exceptions import UsageError
 from .globals import resolve_color_default
 from .types import Choice
 from .types import convert_type
-from .types import Path
 from .utils import echo
 from .utils import LazyFile
 
 # The prompt functions to use.  The doc tools currently override these
 # functions to customize how they work.
-visible_prompt_func = raw_input
+visible_prompt_func = input
 
 _ansi_colors = {
     "black": 30,
@@ -59,10 +56,10 @@ def _build_prompt(
 ):
     prompt = text
     if type is not None and show_choices and isinstance(type, Choice):
-        prompt += " ({})".format(", ".join(map(str, type.choices)))
+        prompt += f" ({', '.join(map(str, type.choices))})"
     if default is not None and show_default:
-        prompt = "{} [{}]".format(prompt, _format_default(default))
-    return prompt + suffix
+        prompt = f"{prompt} [{_format_default(default)}]"
+    return f"{prompt}{suffix}"
 
 
 def _format_default(default):
@@ -148,15 +145,15 @@ def prompt(
             if value:
                 break
             elif default is not None:
-                if isinstance(value_proc, Path):
-                    # validate Path default value(exists, dir_okay etc.)
-                    value = default
-                    break
-                return default
+                value = default
+                break
         try:
             result = value_proc(value)
         except UsageError as e:
-            echo("Error: {}".format(e.message), err=err)  # noqa: B306
+            if hide_input:
+                echo("Error: the value you entered was invalid", err=err)
+            else:
+                echo(f"Error: {e.message}", err=err)  # noqa: B306
             continue
         if not confirmation_prompt:
             return result
@@ -219,14 +216,10 @@ def get_terminal_size():
     """Returns the current size of the terminal as tuple in the form
     ``(width, height)`` in columns and rows.
     """
-    # If shutil has get_terminal_size() (Python 3.3 and later) use that
-    if sys.version_info >= (3, 3):
-        import shutil
+    import shutil
 
-        shutil_get_terminal_size = getattr(shutil, "get_terminal_size", None)
-        if shutil_get_terminal_size:
-            sz = shutil_get_terminal_size()
-            return sz.columns, sz.lines
+    if hasattr(shutil, "get_terminal_size"):
+        return shutil.get_terminal_size()
 
     # We provide a sensible default for get_winterm_size() when being invoked
     # inside a subprocess. Without this, it would not provide a useful input.
@@ -278,13 +271,13 @@ def echo_via_pager(text_or_generator, color=None):
 
     if inspect.isgeneratorfunction(text_or_generator):
         i = text_or_generator()
-    elif isinstance(text_or_generator, string_types):
+    elif isinstance(text_or_generator, str):
         i = [text_or_generator]
     else:
         i = iter(text_or_generator)
 
     # convert every element of i to a text type if necessary
-    text_generator = (el if isinstance(el, string_types) else text_type(el) for el in i)
+    text_generator = (el if isinstance(el, str) else str(el) for el in i)
 
     from ._termui_impl import pager
 
@@ -306,6 +299,7 @@ def progressbar(
     width=36,
     file=None,
     color=None,
+    update_min_steps=1,
 ):
     """This function creates an iterable context manager that can be used
     to iterate over something while showing a progress bar.  It will
@@ -346,11 +340,19 @@ def progressbar(
                 process_chunk(chunk)
                 bar.update(chunks.bytes)
 
-    .. versionadded:: 2.0
+    The ``update()`` method also takes an optional value specifying the
+    ``current_item`` at the new position. This is useful when used
+    together with ``item_show_func`` to customize the output for each
+    manual step::
 
-    .. versionadded:: 4.0
-       Added the `color` parameter.  Added a `update` method to the
-       progressbar object.
+        with click.progressbar(
+            length=total_size,
+            label='Unzipping archive',
+            item_show_func=lambda a: a.filename
+        ) as bar:
+            for archive in zip_file:
+                archive.extract()
+                bar.update(archive.size, archive)
 
     :param iterable: an iterable to iterate over.  If not provided the length
                      is required.
@@ -390,6 +392,17 @@ def progressbar(
                   default is autodetection.  This is only needed if ANSI
                   codes are included anywhere in the progress bar output
                   which is not the case by default.
+    :param update_min_steps: Render only when this many updates have
+        completed. This allows tuning for very fast iterators.
+
+    .. versionadded:: 8.0
+       Added the ``update_min_steps`` parameter.
+
+    .. versionchanged:: 4.0
+        Added the ``color`` parameter. Added the ``update`` method to
+        the object.
+
+    .. versionadded:: 2.0
     """
     from ._termui_impl import ProgressBar
 
@@ -409,6 +422,7 @@ def progressbar(
         label=label,
         width=width,
         color=color,
+        update_min_steps=update_min_steps,
     )
 
 
@@ -428,6 +442,17 @@ def clear():
         os.system("cls")
     else:
         sys.stdout.write("\033[2J\033[1;1H")
+
+
+def _interpret_color(color, offset=0):
+    if isinstance(color, int):
+        return f"{38 + offset};5;{color:d}"
+
+    if isinstance(color, (tuple, list)):
+        r, g, b = color
+        return f"{38 + offset};2;{r:d};{g:d};{b:d}"
+
+    return str(_ansi_colors[color] + offset)
 
 
 def style(
@@ -451,6 +476,7 @@ def style(
         click.echo(click.style('Hello World!', fg='green'))
         click.echo(click.style('ATTENTION!', blink=True))
         click.echo(click.style('Some things', reverse=True, fg='cyan'))
+        click.echo(click.style('More colors', fg=(255, 12, 128), bg=117))
 
     Supported color names:
 
@@ -472,10 +498,15 @@ def style(
     * ``bright_white``
     * ``reset`` (reset the color code only)
 
-    .. versionadded:: 2.0
+    If the terminal supports it, color may also be specified as:
 
-    .. versionadded:: 7.0
-       Added support for bright colors.
+    -   An integer in the interval [0, 255]. The terminal must support
+        8-bit/256-color mode.
+    -   An RGB tuple of three integers in [0, 255]. The terminal must
+        support 24-bit/true-color mode.
+
+    See https://en.wikipedia.org/wiki/ANSI_color and
+    https://gist.github.com/XVilka/8346728 for more information.
 
     :param text: the string to style with ansi codes.
     :param fg: if provided this will become the foreground color.
@@ -491,28 +522,45 @@ def style(
     :param reset: by default a reset-all code is added at the end of the
                   string which means that styles do not carry over.  This
                   can be disabled to compose styles.
+
+    .. versionchanged:: 8.0
+        A non-string ``message`` is converted to a string.
+
+    .. versionchanged:: 8.0
+       Added support for 256 and RGB color codes.
+
+    .. versionchanged:: 7.0
+        Added support for bright colors.
+
+    .. versionadded:: 2.0
     """
+    if not isinstance(text, str):
+        text = str(text)
+
     bits = []
+
     if fg:
         try:
-            bits.append("\033[{}m".format(_ansi_colors[fg]))
+            bits.append(f"\033[{_interpret_color(fg)}m")
         except KeyError:
-            raise TypeError("Unknown color '{}'".format(fg))
+            raise TypeError(f"Unknown color {fg!r}")
+
     if bg:
         try:
-            bits.append("\033[{}m".format(_ansi_colors[bg] + 10))
+            bits.append(f"\033[{_interpret_color(bg, 10)}m")
         except KeyError:
-            raise TypeError("Unknown color '{}'".format(bg))
+            raise TypeError(f"Unknown color {bg!r}")
+
     if bold is not None:
-        bits.append("\033[{}m".format(1 if bold else 22))
+        bits.append(f"\033[{1 if bold else 22}m")
     if dim is not None:
-        bits.append("\033[{}m".format(2 if dim else 22))
+        bits.append(f"\033[{2 if dim else 22}m")
     if underline is not None:
-        bits.append("\033[{}m".format(4 if underline else 24))
+        bits.append(f"\033[{4 if underline else 24}m")
     if blink is not None:
-        bits.append("\033[{}m".format(5 if blink else 25))
+        bits.append(f"\033[{5 if blink else 25}m")
     if reverse is not None:
-        bits.append("\033[{}m".format(7 if reverse else 27))
+        bits.append(f"\033[{7 if reverse else 27}m")
     bits.append(text)
     if reset:
         bits.append(_ansi_reset_all)
@@ -541,10 +589,20 @@ def secho(message=None, file=None, nl=True, err=False, color=None, **styles):
     All keyword arguments are forwarded to the underlying functions
     depending on which one they go with.
 
+    Non-string types will be converted to :class:`str`. However,
+    :class:`bytes` are passed directly to :meth:`echo` without applying
+    style. If you want to style bytes that represent text, call
+    :meth:`bytes.decode` first.
+
+    .. versionchanged:: 8.0
+        A non-string ``message`` is converted to a string. Bytes are
+        passed through without style applied.
+
     .. versionadded:: 2.0
     """
-    if message is not None:
+    if message is not None and not is_bytes(message):
         message = style(message, **styles)
+
     return echo(message, file=file, nl=nl, err=err, color=color)
 
 
@@ -603,7 +661,9 @@ def launch(url, wait=False, locate=False):
     .. versionadded:: 2.0
 
     :param url: URL or filename of the thing to launch.
-    :param wait: waits for the program to stop.
+    :param wait: Wait for the program to exit before returning. This
+        only works if the launched program blocks. In particular,
+        ``xdg-open`` on Linux does not block.
     :param locate: if this is set to `True` then instead of launching the
                    application associated with the URL it will attempt to
                    launch a file manager with the file located.  This
