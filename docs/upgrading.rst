@@ -19,7 +19,7 @@ The :meth:`BaseCommand.__call__` alias invokes the main entry point via
 `anyio.run`. If you already have an async main program, simply use
 ``await cmd.main()`` instead of ``cmd()``.
 
-Commands and callbacks may be asynchronous; Click auto-``await``s them.
+Commands and callbacks may be asynchronous; Click auto-``await``\ s them.
 
 Support for Python 2.x was dropped.
 
