@@ -272,6 +272,26 @@ What it looks like:
 
 .. _switching-to-setuptools:
 
+
+Selecting the anyio backend
+---------------------------
+
+You can teach your main command to auto-invoke anyio with the ``asyncio``
+or ``trio`` back-end. The default is ``asyncio`` (inherited from
+``anyio``)..
+
+.. click:example::
+
+    @click.async_backend("trio")
+    @click.command()
+    @click.option("--name",default="Joe")
+    async def hello(name):
+         click.echo(f"Hello {name}!")
+         # insert any Trio example code here
+
+Note that ``async_backend`` is special in that it must occur **before**
+the ``click.command`` decorator.
+
 Switching to Setuptools
 -----------------------
 

@@ -9,6 +9,25 @@ from .globals import get_current_context
 from .utils import echo
 
 
+def async_backend(backend):
+    """Selects the `anyio` backend to use.
+
+    Valid choices are ``trio`` any ``asyncio``. The default is ``truo``.
+
+    This decorator must be occur **before** your main program's
+    ``click.command`` decorator.
+    """
+    def wrapper(f):
+        def new_func(*args, **kwargs):
+            if '_anyio_backend' not in kwargs:
+                kwargs['_anyio_backend'] = backend
+            return f(*args, **kwargs)
+
+        return update_wrapper(new_func, f)
+
+    return wrapper
+
+
 def pass_context(f):
     """Marks a callback as wanting to receive the current context
     object as first argument.

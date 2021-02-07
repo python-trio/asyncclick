@@ -13,6 +13,7 @@ from .core import Group
 from .core import MultiCommand
 from .core import Option
 from .core import Parameter
+from .decorators import async_backend
 from .decorators import argument
 from .decorators import command
 from .decorators import confirmation_option
@@ -71,5 +72,7 @@ from .utils import get_binary_stream
 from .utils import get_os_args
 from .utils import get_text_stream
 from .utils import open_file
+
+anyio_backend = "asyncio"
 
 __version__ = "8.0.0a2+anyio.1"
