@@ -179,54 +179,6 @@ async def test_context_pushing():
     assert rv == [42]
 
 
-@pytest.mark.anyio
-async def test_async_context_mgr():
-    @asynccontextmanager
-    async def manager():
-        val = [1]
-        yield val
-        val[0] = 0
-
-    @click.command()
-    def cli():
-        pass
-
-    ctx = click.Context(cli)
-
-    async with ctx.scope():
-        rv = await ctx.enter_async_context(manager())
-        assert rv[0] == 1, rv
-
-        # Internal
-        assert ctx._depth == 1
-
-    assert rv == [0], rv
-
-
-@pytest.mark.anyio
-async def test_context_mgr():
-    @contextmanager
-    def manager():
-        val = [1]
-        yield val
-        val[0] = 0
-
-    @click.command()
-    def cli():
-        pass
-
-    ctx = click.Context(cli)
-
-    async with ctx.scope():
-        rv = ctx.enter_context(manager())
-        assert rv[0] == 1, rv
-
-        # Internal
-        assert ctx._depth == 1
-
-    assert rv == [0], rv
-
-
 def test_pass_obj(runner):
     @click.group()
     @click.pass_context

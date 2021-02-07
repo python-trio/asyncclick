@@ -412,9 +412,8 @@ class Context:
 
         self._close_callbacks = []
         self._depth = 0
-        self._async_mgr = None
         self._parameter_source = {}
-        self._exit_stack = ExitStack()
+        self._exit_stack = AsyncExitStack()
 
     async def to_info_dict(self):
         """Gather information that could be useful for a tool generating
@@ -438,9 +437,6 @@ class Context:
         }
 
     async def __aenter__(self):
-        if self._async_mgr is None:
-            self._async_mgr = AsyncExitStack()
-            self._ctx_mgr = await self._async_mgr.__aenter__()
         self._depth += 1
         push_context(self)
         return self
@@ -448,17 +444,8 @@ class Context:
     async def __aexit__(self, exc_type, exc_value, tb):
         self._depth -= 1
         if self._depth == 0:
-            await self._async_mgr.__aexit__(exc_type, exc_value, tb)
-            self.close()
+            await self.close()
         pop_context()
-
-    def enter_context(self, ctx):
-        """See :meth:contextlib.AsyncExitStack.enter_context`."""
-        return self._ctx_mgr.enter_context(ctx)
-
-    def enter_async_context(self, ctx):
-        """See :meth:contextlib.AsyncExitStack.enter_async_context`."""
-        return self._ctx_mgr.enter_async_context(ctx)
 
     @asynccontextmanager
     async def scope(self, cleanup=True):
@@ -569,6 +556,35 @@ class Context:
         """
         return self._exit_stack.enter_context(context_manager)
 
+    async def with_async_resource(self, context_manager):
+        """Register a resource as if it were used in an ``async with``
+        statement. The resource will be cleaned up when the context is
+        popped.
+
+        Uses :meth:`contextlib.ExitStack.enter_async_context`. It calls the
+        resource's ``__aenter__()`` method and returns the result. When
+        the context is popped, it closes the stack, which calls the
+        resource's ``__aexit__()`` method.
+
+        To register a cleanup function for something that isn't a
+        context manager, use :meth:`call_on_close`. Or use something
+        from :mod:`contextlib` to turn it into a context manager first.
+
+        .. code-block:: python
+
+            @click.group()
+            @click.option("--name")
+            @click.pass_context
+            def cli(ctx):
+                ctx.obj = ctx.with_resource(connect_db(name))
+
+        :param context_manager: The context manager to enter.
+        :return: Whatever ``context_manager.__enter__()`` returns.
+
+        .. versionadded:: 8.0
+        """
+        return await self._exit_stack.enter_async_context(context_manager)
+
     def call_on_close(self, f):
         """Register a function to be called when the context tears down.
 
@@ -579,14 +595,20 @@ class Context:
 
         :param f: The function to execute on teardown.
         """
-        return self._exit_stack.callback(f)
 
-    def close(self):
+        async def wrapper():
+            rv = f()
+            if iscoroutine(rv):
+                rv = await rv
+
+        return self._exit_stack.push_async_callback(wrapper)
+
+    async def close(self):
         """Invoke all close callbacks registered with
         :meth:`call_on_close`, and exit all context managers entered
         with :meth:`with_resource`.
         """
-        self._exit_stack.close()
+        await self._exit_stack.aclose()
         # In case the context is reused, create a new exit stack.
         self._exit_stack = ExitStack()
 

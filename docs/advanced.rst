@@ -466,6 +466,9 @@ any subcommands finish, the context's resources are cleaned up.
         for entry in obj.db.query(...):
             click.echo(entry)
 
+There is also a :meth:`~click.Context.with_async_resource` method
+if the resource must be used asynchronously.
+
 If the resource isn't a context manager, usually it can be wrapped in
 one using something from :mod:`contextlib`. If that's not possible, use
 the context's :meth:`~click.Context.call_on_close` method to register a
@@ -484,3 +487,5 @@ cleanup function.
             db.record_use()
             db.save()
             db.close()
+
+This method also accepts async close procedures.
