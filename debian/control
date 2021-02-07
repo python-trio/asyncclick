@@ -14,6 +14,6 @@ Package: python3-asyncclick
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends},
   python3-anyio (>= 2),
-Recommends: python3-trio
+Recommends: python3-trio, sensible-utils | editor
 Description: A simple wrapper around optparse for powerful command line u
 
