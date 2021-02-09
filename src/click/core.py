@@ -444,7 +444,7 @@ class Context:
     async def __aexit__(self, exc_type, exc_value, tb):
         self._depth -= 1
         if self._depth == 0:
-            await self.close()
+            await self.aclose()
         pop_context()
 
     @asynccontextmanager
@@ -603,7 +603,7 @@ class Context:
 
         return self._exit_stack.push_async_callback(wrapper)
 
-    async def close(self):
+    async def aclose(self):
         """Invoke all close callbacks registered with
         :meth:`call_on_close`, and exit all context managers entered
         with :meth:`with_resource`.
