@@ -3,3 +3,4 @@
 pip-tools
 pre-commit
 tox
+anyio

@@ -1,4 +1,4 @@
-.. currentmodule:: click.shell_completion
+.. currentmodule:: asyncclick.shell_completion
 
 Shell Completion
 ================
@@ -118,8 +118,8 @@ for the changes to be loaded.
 Custom Type Completion
 ----------------------
 
-When creating a custom :class:`~click.ParamType`, override its
-:meth:`~click.ParamType.shell_complete` method to provide shell
+When creating a custom :class:`~asyncclick.ParamType`, override its
+:meth:`~asyncclick.ParamType.shell_complete` method to provide shell
 completion for parameters with the type. The method must return a list
 of :class:`~CompletionItem` objects. Besides the value, these objects
 hold metadata that shell support might use. The built-in implementations

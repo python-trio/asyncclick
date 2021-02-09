@@ -3,7 +3,7 @@
 Options
 =======
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Adding options to commands can be accomplished by the :func:`option`
 decorator.  Since options can come in various different versions, there

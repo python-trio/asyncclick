@@ -341,6 +341,7 @@ class ProgressBar:
             self.finish()
             self.render_progress()
 
+
 def pager(generator, color=None):
     """Decide what method to use for paging through text."""
     stdout = _default_text_stdout()

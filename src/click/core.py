@@ -2,7 +2,6 @@ import enum
 import errno
 import os
 import sys
-import anyio
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
 from contextlib import contextmanager
@@ -10,6 +9,8 @@ from contextlib import ExitStack
 from functools import update_wrapper
 from inspect import iscoroutine
 from itertools import repeat
+
+import anyio
 
 from ._unicodefun import _verify_python_env
 from .exceptions import Abort
@@ -444,7 +445,7 @@ class Context:
     async def __aexit__(self, exc_type, exc_value, tb):
         self._depth -= 1
         if self._depth == 0:
-            await self.close()
+            await self.aclose()
         pop_context()
 
     @asynccontextmanager
@@ -514,7 +515,7 @@ class Context:
         return self._meta
 
     def make_formatter(self):
-        """Creates the :class:`~click.HelpFormatter` for the help and
+        """Creates the :class:`~asyncclick.HelpFormatter` for the help and
         usage output.
 
         To quickly customize the formatter class used without overriding
@@ -603,7 +604,7 @@ class Context:
 
         return self._exit_stack.push_async_callback(wrapper)
 
-    async def close(self):
+    async def aclose(self):
         """Invoke all close callbacks registered with
         :meth:`call_on_close`, and exit all context managers entered
         with :meth:`with_resource`.
@@ -773,7 +774,7 @@ class Context:
         from which the value of the parameter was obtained.
 
         :param name: The name of the parameter.
-        :param source: A member of :class:`~click.core.ParameterSource`.
+        :param source: A member of :class:`~asyncclick.core.ParameterSource`.
         """
         self._parameter_source[name] = source
 
@@ -783,7 +784,7 @@ class Context:
 
         This can be useful for determining when a user specified a value
         on the command line that is the same as the default value. It
-        will be :attr:`~click.core.ParameterSource.DEFAULT` only if the
+        will be :attr:`~asyncclick.core.ParameterSource.DEFAULT` only if the
         value was actually taken from the default.
 
         :param name: The name of the parameter.
@@ -1067,9 +1068,10 @@ class BaseCommand:
         main = self.main
         if _anyio_backend is None:
             import asyncclick
+
             _anyio_backend = asyncclick.anyio_backend
         return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
-    
+
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)
 
@@ -1532,6 +1534,7 @@ class MultiCommand(Command):
 
     def invoke(self, ctx):
         return self._invoke(ctx)
+
     async def _invoke(self, ctx):
         async def _process_result(value):
             if self.result_callback is not None:
@@ -1838,7 +1841,7 @@ class Parameter:
     :param shell_complete: A function that returns custom shell
         completions. Used instead of the param's type completion if
         given. Takes ``ctx, param, incomplete`` and must return a list
-        of :class:`~click.shell_completion.CompletionItem` or a list of
+        of :class:`~asyncclick.shell_completion.CompletionItem` or a list of
         strings.
 
     .. versionchanged:: 8.0
@@ -2162,7 +2165,7 @@ class Parameter:
         """Return a list of completions for the incomplete value. If a
         ``shell_complete`` function was given during init, it is used.
         Otherwise, the :attr:`type`
-        :meth:`~click.types.ParamType.shell_complete` function is used.
+        :meth:`~asyncclick.types.ParamType.shell_complete` function is used.
 
         :param ctx: Invocation context for this command.
         :param incomplete: Value being completed. May be empty.

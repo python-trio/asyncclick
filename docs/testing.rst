@@ -1,7 +1,7 @@
 Testing Click Applications
 ==========================
 
-.. currentmodule:: click.testing
+.. currentmodule:: asyncclick.testing
 
 For basic testing, Click provides the :mod:`click.testing` module which
 provides test functionality that helps you invoke command line

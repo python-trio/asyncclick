@@ -1,7 +1,6 @@
-import pytest
-
 import asyncclick as click
 import asyncclick.types
+import pytest
 
 # Common (obj, expect) pairs used to construct multiple tests.
 STRING_PARAM_TYPE = (click.STRING, {"param_type": "String", "name": "text"})

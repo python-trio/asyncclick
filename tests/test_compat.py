@@ -1,6 +1,5 @@
-import pytest
-
 import asyncclick as click
+import pytest
 from asyncclick._compat import should_strip_ansi
 from asyncclick._compat import WIN
 

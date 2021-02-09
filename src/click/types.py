@@ -109,7 +109,7 @@ class ParamType:
 
     def shell_complete(self, ctx, param, incomplete):
         """Return a list of
-        :class:`~click.shell_completion.CompletionItem` objects for the
+        :class:`~asyncclick.shell_completion.CompletionItem` objects for the
         incomplete value. Most types do not provide completions, but
         some do, and this allows custom types to provide custom
         completions as well.

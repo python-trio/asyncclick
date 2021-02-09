@@ -1,7 +1,7 @@
 User Input Prompts
 ==================
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Click supports prompts in two different places.  The first is automated
 prompts when the parameter handling happens, and the second is to ask for

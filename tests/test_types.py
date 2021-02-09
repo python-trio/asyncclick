@@ -1,6 +1,5 @@
-import pytest
-
 import asyncclick as click
+import pytest
 
 
 @pytest.mark.parametrize(

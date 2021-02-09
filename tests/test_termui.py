@@ -1,10 +1,9 @@
 import platform
 import time
 
-import pytest
-
 import asyncclick as click
 import asyncclick._termui_impl
+import pytest
 from asyncclick._compat import WIN
 
 

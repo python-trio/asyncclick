@@ -1,7 +1,7 @@
 Advanced Patterns
 =================
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 In addition to common functionality that is implemented in the library
 itself, there are countless patterns that can be implemented by extending
@@ -390,7 +390,7 @@ In some situations it's helpful to understand whether or not an option
 or parameter came from the command line, the environment, the default
 value, or :attr:`Context.default_map`. The
 :meth:`Context.get_parameter_source` method can be used to find this
-out. It will return a member of the :class:`~click.core.ParameterSource`
+out. It will return a member of the :class:`~asyncclick.core.ParameterSource`
 enum.
 
 .. click:example::
@@ -447,7 +447,7 @@ Ordinarily, it would be used with the ``with`` statement:
 However, a ``with`` block in a group would exit and close the database
 before it could be used by a subcommand.
 
-Instead, use the context's :meth:`~click.Context.with_resource` method
+Instead, use the context's :meth:`~asyncclick.Context.with_resource` method
 to enter the context manager and return the resource. When the group and
 any subcommands finish, the context's resources are cleaned up.
 
@@ -466,12 +466,12 @@ any subcommands finish, the context's resources are cleaned up.
         for entry in obj.db.query(...):
             click.echo(entry)
 
-There is also a :meth:`~click.Context.with_async_resource` method
+There is also a :meth:`~asyncclick.Context.with_async_resource` method
 if the resource must be used asynchronously.
 
 If the resource isn't a context manager, usually it can be wrapped in
 one using something from :mod:`contextlib`. If that's not possible, use
-the context's :meth:`~click.Context.call_on_close` method to register a
+the context's :meth:`~asyncclick.Context.call_on_close` method to register a
 cleanup function.
 
 .. code-block:: python

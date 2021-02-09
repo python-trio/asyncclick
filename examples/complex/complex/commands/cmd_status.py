@@ -1,6 +1,5 @@
-from complex.cli import pass_environment
-
 import asyncclick as click
+from complex.cli import pass_environment
 
 
 @click.command("status", short_help="Shows file changes.")

@@ -298,7 +298,7 @@ class CliRunner:
     ):
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
-        arguments are passed to the :meth:`~clickpkg.Command.main` function of
+        arguments are passed to the :meth:`~asyncclickpkg.Command.main` function of
         the command.
 
         This returns a :class:`Result` object.
@@ -345,7 +345,9 @@ class CliRunner:
                 prog_name = self.get_default_prog_name(cli)
 
             try:
-                return_value = await cli.main(args=args or (), prog_name=prog_name, **extra)
+                return_value = await cli.main(
+                    args=args or (), prog_name=prog_name, **extra
+                )
             except SystemExit as e:
                 exc_info = sys.exc_info()
                 exit_code = e.code
@@ -361,7 +363,7 @@ class CliRunner:
                     exit_code = 1
 
             except Exception as e:
-                if not catch_exceptions: 
+                if not catch_exceptions:
                     raise
                 exception = e
                 exit_code = 1

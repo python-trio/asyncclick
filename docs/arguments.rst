@@ -3,7 +3,7 @@
 Arguments
 =========
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Arguments work similarly to :ref:`options <options>` but are positional.
 They also only support a subset of the features of options due to their

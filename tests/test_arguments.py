@@ -1,8 +1,8 @@
 import sys
 
+import asyncclick as click
 import pytest
 
-import asyncclick as click
 
 def test_nargs_star(runner):
     @click.command()
@@ -87,7 +87,7 @@ def test_bytes_args(runner, monkeypatch):
         ), "UTF-8 encoded argument should be implicitly converted to Unicode"
 
     # Simulate empty locale environment variables
-    #monkeypatch.setattr(sys.stdin, "encoding", "utf-8")
+    # monkeypatch.setattr(sys.stdin, "encoding", "utf-8")
     monkeypatch.setattr(sys, "getfilesystemencoding", lambda: "utf-8")
     monkeypatch.setattr(sys, "getdefaultencoding", lambda: "utf-8")
 

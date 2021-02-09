@@ -1,8 +1,8 @@
-from contextlib import asynccontextmanager, contextmanager
-
-import pytest
+from contextlib import asynccontextmanager
+from contextlib import contextmanager
 
 import asyncclick as click
+import pytest
 from asyncclick.core import ParameterSource
 
 

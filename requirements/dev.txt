@@ -4,6 +4,7 @@
 #
 #    pip-compile requirements/dev.in
 #
+anyio
 alabaster==0.7.12
     # via sphinx
 appdirs==1.4.4
