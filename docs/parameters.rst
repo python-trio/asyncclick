@@ -1,7 +1,7 @@
 Parameters
 ==========
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Click supports two types of parameters for scripts: options and arguments.
 There is generally some confusion among authors of command line scripts of

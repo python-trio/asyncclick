@@ -298,7 +298,7 @@ class CliRunner:
     ):
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
-        arguments are passed to the :meth:`~clickpkg.Command.main` function of
+        arguments are passed to the :meth:`~asyncclickpkg.Command.main` function of
         the command.
 
         This returns a :class:`Result` object.

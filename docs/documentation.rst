@@ -1,7 +1,7 @@
 Documenting Scripts
 ===================
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Click makes it very easy to document your command line tools.  First of
 all, it automatically generates help pages for you.  While these are

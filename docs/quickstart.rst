@@ -1,7 +1,7 @@
 Quickstart
 ==========
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 You can get the library directly from PyPI::
 

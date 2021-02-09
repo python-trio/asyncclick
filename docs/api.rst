@@ -183,7 +183,7 @@ Shell Completion
 See :doc:`/shell-completion` for information about enabling and
 customizing Click's shell completion system.
 
-.. currentmodule:: click.shell_completion
+.. currentmodule:: asyncclick.shell_completion
 
 .. autoclass:: CompletionItem
 
@@ -197,7 +197,7 @@ customizing Click's shell completion system.
 Testing
 -------
 
-.. currentmodule:: click.testing
+.. currentmodule:: asyncclick.testing
 
 .. autoclass:: CliRunner
    :members:

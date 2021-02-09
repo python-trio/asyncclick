@@ -1,7 +1,7 @@
 Utilities
 =========
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Besides the functionality that Click provides to interface with argument
 parsing and handling, it also provides a bunch of addon functionality that

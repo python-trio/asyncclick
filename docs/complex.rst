@@ -3,7 +3,7 @@
 Complex Applications
 ====================
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Click is designed to assist with the creation of complex and simple CLI tools
 alike.  However, the power of its design is the ability to arbitrarily nest

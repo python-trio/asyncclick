@@ -1,4 +1,4 @@
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 asyncclick 8
 ------------

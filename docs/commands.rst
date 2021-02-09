@@ -1,7 +1,7 @@
 Commands and Groups
 ===================
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 The most important feature of Click is the concept of arbitrarily nesting
 command line utilities.  This is implemented through the :class:`Command`

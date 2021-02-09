@@ -1,7 +1,7 @@
 Unicode Support
 ===============
 
-.. currentmodule:: click
+.. currentmodule:: asyncclick
 
 Click has to take extra care to support Unicode text in different
 environments.
