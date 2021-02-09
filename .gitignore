@@ -16,3 +16,4 @@ __pycache__/
 htmlcov/
 /htmlcov/
 /docs/_build/
+/.eggs/
