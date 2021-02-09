@@ -75,4 +75,4 @@ from .utils import open_file
 
 anyio_backend = "asyncio"
 
-__version__ = "8.0.0a2+anyio.1"
+__version__ = "8.0.0a2.post3"
