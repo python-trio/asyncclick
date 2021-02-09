@@ -74,5 +74,3 @@ from .utils import get_text_stream
 from .utils import open_file
 
 anyio_backend = "asyncio"
-
-__version__ = "8.0.0a2.post3"
