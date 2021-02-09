@@ -2,9 +2,8 @@ import os
 import sys
 from io import BytesIO
 
-import pytest
-
 import asyncclick as click
+import pytest
 from asyncclick._compat import WIN
 from asyncclick.testing import CliRunner
 

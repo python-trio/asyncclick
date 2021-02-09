@@ -1,8 +1,8 @@
 import os
 import re
-import pytest
 
 import asyncclick as click
+import pytest
 
 
 def test_prefixes(runner):

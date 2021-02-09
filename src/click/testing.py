@@ -345,7 +345,9 @@ class CliRunner:
                 prog_name = self.get_default_prog_name(cli)
 
             try:
-                return_value = await cli.main(args=args or (), prog_name=prog_name, **extra)
+                return_value = await cli.main(
+                    args=args or (), prog_name=prog_name, **extra
+                )
             except SystemExit as e:
                 exc_info = sys.exc_info()
                 exit_code = e.code
@@ -361,7 +363,7 @@ class CliRunner:
                     exit_code = 1
 
             except Exception as e:
-                if not catch_exceptions: 
+                if not catch_exceptions:
                     raise
                 exception = e
                 exit_code = 1

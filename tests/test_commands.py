@@ -4,6 +4,7 @@ from inspect import iscoroutine
 import asyncclick as click
 import pytest
 
+
 def test_other_command_invoke(runner):
     @click.command()
     @click.pass_context

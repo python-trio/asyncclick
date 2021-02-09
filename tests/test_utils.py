@@ -4,11 +4,10 @@ import stat
 import sys
 from io import StringIO
 
-import pytest
-
 import asyncclick as click
 import asyncclick._termui_impl
 import asyncclick.utils
+import pytest
 from asyncclick._compat import WIN
 
 

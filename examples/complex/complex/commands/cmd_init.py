@@ -1,6 +1,5 @@
-from complex.cli import pass_environment
-
 import asyncclick as click
+from complex.cli import pass_environment
 
 
 @click.command("init", short_help="Initializes a repo.")

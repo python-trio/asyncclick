@@ -17,10 +17,11 @@ def async_backend(backend):
     This decorator must be occur **before** your main program's
     ``click.command`` decorator.
     """
+
     def wrapper(f):
         def new_func(*args, **kwargs):
-            if '_anyio_backend' not in kwargs:
-                kwargs['_anyio_backend'] = backend
+            if "_anyio_backend" not in kwargs:
+                kwargs["_anyio_backend"] = backend
             return f(*args, **kwargs)
 
         return update_wrapper(new_func, f)

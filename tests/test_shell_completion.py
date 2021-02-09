@@ -1,8 +1,7 @@
 import sys
 
-import pytest
-
 import asyncclick as click
+import pytest
 from asyncclick.core import Argument
 from asyncclick.core import Command
 from asyncclick.core import Group

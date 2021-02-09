@@ -469,7 +469,9 @@ async def _resolve_context(cli, ctx_args, prog_name, args):
                 if cmd is None:
                     return ctx
 
-                ctx = await cmd.make_context(name, args, parent=ctx, resilient_parsing=True)
+                ctx = await cmd.make_context(
+                    name, args, parent=ctx, resilient_parsing=True
+                )
                 args = ctx.protected_args + ctx.args
             else:
                 while args:

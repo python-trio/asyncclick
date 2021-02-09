@@ -1,8 +1,7 @@
 import sys
 
-import pytest
-
 import asyncclick as click
+import pytest
 
 
 def debug():

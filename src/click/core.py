@@ -2,7 +2,6 @@ import enum
 import errno
 import os
 import sys
-import anyio
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
 from contextlib import contextmanager
@@ -10,6 +9,8 @@ from contextlib import ExitStack
 from functools import update_wrapper
 from inspect import iscoroutine
 from itertools import repeat
+
+import anyio
 
 from ._unicodefun import _verify_python_env
 from .exceptions import Abort
@@ -1067,9 +1068,10 @@ class BaseCommand:
         main = self.main
         if _anyio_backend is None:
             import asyncclick
+
             _anyio_backend = asyncclick.anyio_backend
         return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
-    
+
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)
 
@@ -1532,6 +1534,7 @@ class MultiCommand(Command):
 
     def invoke(self, ctx):
         return self._invoke(ctx)
+
     async def _invoke(self, ctx):
         async def _process_result(value):
             if self.result_callback is not None:

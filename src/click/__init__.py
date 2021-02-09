@@ -13,8 +13,8 @@ from .core import Group
 from .core import MultiCommand
 from .core import Option
 from .core import Parameter
-from .decorators import async_backend
 from .decorators import argument
+from .decorators import async_backend
 from .decorators import command
 from .decorators import confirmation_option
 from .decorators import group

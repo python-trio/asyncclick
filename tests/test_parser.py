@@ -1,6 +1,5 @@
-import pytest
-
 import asyncclick as click
+import pytest
 from asyncclick.parser import split_arg_string
 
 

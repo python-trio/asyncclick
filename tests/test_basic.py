@@ -2,9 +2,8 @@ import os
 import uuid
 from itertools import chain
 
-import pytest
-
 import asyncclick as click
+import pytest
 
 
 def test_basic_functionality(runner):

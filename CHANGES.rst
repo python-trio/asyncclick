@@ -3,9 +3,9 @@
 asyncclick 8
 ------------
 
--   Drop the __version__ attribute. Use :mod:`pkg_resouces` or 
+-   Drop the __version__ attribute. Use :mod:`pkg_resouces` or
     :mod:`importlib.metadata` (since Python 3.8) instead.
--   Drop enter_context and enter_async_context. Use 
+-   Drop enter_context and enter_async_context. Use
     ``Context.with_resource``and ``Context.with_async_resource``
     instead.
 -   The ``Context.close()`` method is now async and thus has been
