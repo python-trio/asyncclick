@@ -1532,8 +1532,8 @@ class MultiCommand(Command):
 
         return ctx.args
 
-    def invoke(self, ctx):
-        return self._invoke(ctx)
+    async def invoke(self, ctx):  # appease linters
+        return await self._invoke(ctx)
 
     async def _invoke(self, ctx):
         async def _process_result(value):
