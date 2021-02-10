@@ -1,7 +1,7 @@
 API
 ===
 
-.. module:: click
+.. module:: asyncclick
 
 This part of the documentation lists the full API reference of all public
 classes and functions.
@@ -108,7 +108,7 @@ Context
 
 .. autofunction:: get_current_context
 
-.. autoclass:: click.core.ParameterSource
+.. autoclass:: asyncclick.core.ParameterSource
     :members:
     :member-order: bysource
 
