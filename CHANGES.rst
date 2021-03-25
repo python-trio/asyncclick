@@ -20,6 +20,8 @@ Version 8.0
 Unreleased
 
 -   Drop support for Python 2 and 3.5.
+-   Colorama is always installed on Windows in order to provide style
+    and color support. :pr:`1784`
 -   Adds a repr to Command, showing the command name for friendlier
     debugging. :issue:`1267`, :pr:`1295`
 -   Add support for distinguishing the source of a command line
@@ -171,6 +173,34 @@ Unreleased
     ``Choice`` :issue:`1692`
 -   Use ``mkstemp()`` instead of ``mktemp()`` in pager implementation.
     :issue:`1752`
+-   If ``Option.show_default`` is a string, it is displayed even if
+    ``default`` is ``None``. :issue:`1732`
+-   ``click.get_terminal_size()`` is deprecated and will be removed in
+    8.1. Use :func:`shutil.get_terminal_size` instead. :issue:`1736`
+-   Control the location of the temporary directory created by
+    ``CLIRunner.isolated_filesystem`` by passing ``temp_dir``. A custom
+    directory will not be removed automatically. :issue:`395`
+-   ``click.confirm()`` will prompt until input is given if called with
+    ``default=None``. :issue:`1381`
+-   Option prompts validate the value with the option's callback in
+    addition to its type. :issue:`457`
+-   ``confirmation_prompt`` can be set to a custom string. :issue:`723`
+-   Allow styled output in Jupyter on Windows. :issue:`1271`
+-   ``style()`` supports the ``strikethrough`` style. :issue:`805`
+-   Multiline marker is removed from short help text. :issue:`1597`
+-   Restore progress bar behavior of echoing only the label if the file
+    is not a TTY. :issue:`1138`
+-   Progress bar output is shown even if execution time is less than 0.5
+    seconds. :issue:`1648`
+-   Progress bar ``item_show_func`` shows the current item, not the
+    previous item. :issue:`1353`
+-   The ``Path`` param type can be passed ``path_type=pathlib.Path`` to
+    return a path object instead of a string. :issue:`405`
+-   ``TypeError`` is raised when parameter with ``multiple=True`` or
+    ``nargs > 1`` has non-iterable default. :issue:`1749`
+-   Add a ``pass_meta_key`` decorator for passing a key from
+    ``Context.meta``. This is useful for extensions using ``meta`` to
+    store information. :issue:`1739`
 
 
 Version 7.1.2

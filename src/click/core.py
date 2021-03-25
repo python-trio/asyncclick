@@ -2,6 +2,7 @@ import enum
 import errno
 import os
 import sys
+import typing as t
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
 from contextlib import contextmanager
@@ -611,7 +612,7 @@ class Context:
         """
         await self._exit_stack.aclose()
         # In case the context is reused, create a new exit stack.
-        self._exit_stack = ExitStack()
+        self._exit_stack = AsyncExitStack()
 
     @property
     def command_path(self):
@@ -1679,7 +1680,7 @@ class Group(MultiCommand):
     #: subcommands use a custom command class.
     #:
     #: .. versionadded:: 8.0
-    command_class = None
+    command_class: t.Optional[t.Type[BaseCommand]] = None
 
     #: If set, this is used by the group's :meth:`group` decorator
     #: as the default :class:`Group` class. This is useful to make all
@@ -1691,7 +1692,8 @@ class Group(MultiCommand):
     #: custom groups.
     #:
     #: .. versionadded:: 8.0
-    group_class = None
+    group_class: t.Optional[t.Union[t.Type["Group"], t.Type[type]]] = None
+    # Literal[type] isn't valid, so use Type[type]
 
     def __init__(self, name=None, commands=None, **attrs):
         super().__init__(name, **attrs)
@@ -1821,9 +1823,10 @@ class Parameter:
     :param default: the default value if omitted.  This can also be a callable,
                     in which case it's invoked when the default is needed
                     without any arguments.
-    :param callback: a callback that should be executed after the parameter
-                     was matched.  This is called as ``fn(ctx, param,
-                     value)`` and needs to return the value.
+    :param callback: A function to further process or validate the value
+        after type conversion. It is called as ``f(ctx, param, value)``
+        and must return the value. It is called for all sources,
+        including prompts.
     :param nargs: the number of arguments to match.  If not ``1`` the return
                   value is a tuple instead of single value.  The default for
                   nargs is ``1`` (except if the type is a tuple, then it's
@@ -1843,6 +1846,12 @@ class Parameter:
         given. Takes ``ctx, param, incomplete`` and must return a list
         of :class:`~asyncclick.shell_completion.CompletionItem` or a list of
         strings.
+
+    .. versionchanged:: 8.0
+        ``process_value`` validates required parameters and bounded
+        ``nargs``, and invokes the parameter callback before returning
+        the value. This allows the callback to validate prompts.
+        ``full_process_value`` is removed.
 
     .. versionchanged:: 8.0
         ``autocompletion`` is renamed to ``shell_complete`` and has new
@@ -2056,20 +2065,17 @@ class Parameter:
             if level == 0:
                 return self.type(value, self, ctx)
 
-            return tuple(_convert(x, level - 1) for x in value)
+            try:
+                iter_value = iter(value)
+            except TypeError:
+                raise TypeError(
+                    "Value for parameter with multiple = True or nargs > 1"
+                    " should be an iterable."
+                )
+
+            return tuple(_convert(x, level - 1) for x in iter_value)
 
         return _convert(value, (self.nargs != 1) + bool(self.multiple))
-
-    def process_value(self, ctx, value):
-        """Given a value and context this runs the logic to convert the
-        value as necessary.
-        """
-        # If the value we were given is None we do nothing.  This way
-        # code that calls this can easily figure out if something was
-        # not provided.  Otherwise it would be converted into an empty
-        # tuple for multiple invocations which is inconvenient.
-        if value is not None:
-            return self.type_cast_value(ctx, value)
 
     def value_is_missing(self, value):
         if value is None:
@@ -2078,8 +2084,9 @@ class Parameter:
             return True
         return False
 
-    def full_process_value(self, ctx, value):
-        value = self.process_value(ctx, value)
+    def process_value(self, ctx, value):
+        if value is not None:
+            value = self.type_cast_value(ctx, value)
 
         if self.required and self.value_is_missing(value):
             raise MissingParameter(ctx=ctx, param=self)
@@ -2100,6 +2107,9 @@ class Parameter:
                 f"Argument {self.name!r} takes {self.nargs} values but"
                 f" {len(value)} {were} given."
             )
+
+        if self.callback is not None:
+            value = self.callback(ctx, self, value)
 
         return value
 
@@ -2133,10 +2143,7 @@ class Parameter:
             ctx.set_parameter_source(self.name, source)
 
             try:
-                value = self.full_process_value(ctx, value)
-
-                if self.callback is not None:
-                    value = self.callback(ctx, self, value)
+                value = self.process_value(ctx, value)
             except Exception:
                 if not ctx.resilient_parsing:
                     raise
@@ -2201,8 +2208,9 @@ class Option(Parameter):
     :param prompt: if set to `True` or a non empty string then the user will be
                    prompted for input.  If set to `True` the prompt will be the
                    option name capitalized.
-    :param confirmation_prompt: if set then the value will need to be confirmed
-                                if it was prompted for.
+    :param confirmation_prompt: Prompt a second time to confirm the
+        value if it was prompted for. Can be set to a string instead of
+        ``True`` to customize the message.
     :param prompt_required: If set to ``False``, the user will be
         prompted for input only when the option was specified as a flag
         without a value.
@@ -2258,6 +2266,7 @@ class Option(Parameter):
             prompt_text = None
         else:
             prompt_text = prompt
+
         self.prompt = prompt_text
         self.confirmation_prompt = confirmation_prompt
         self.prompt_required = prompt_required
@@ -2459,9 +2468,12 @@ class Option(Parameter):
                 extra.append(f"env var: {var_str}")
 
         default_value = self.get_default(ctx, call=False)
+        show_default_is_str = isinstance(self.show_default, str)
 
-        if default_value is not None and (self.show_default or ctx.show_default):
-            if isinstance(self.show_default, str):
+        if show_default_is_str or (
+            default_value is not None and (self.show_default or ctx.show_default)
+        ):
+            if show_default_is_str:
                 default_string = f"({self.show_default})"
             elif isinstance(default_value, (list, tuple)):
                 default_string = ", ".join(str(d) for d in default_value)

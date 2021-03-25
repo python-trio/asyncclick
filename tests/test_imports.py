@@ -41,15 +41,16 @@ ALLOWED_IMPORTS = {
     "itertools",
     "io",
     "threading",
-    "colorama",
     "errno",
     "fcntl",
     "datetime",
     "enum",
+    "typing",
+    "types",
 }
 
 if WIN:
-    ALLOWED_IMPORTS.update(["ctypes", "ctypes.wintypes", "msvcrt", "time", "zlib"])
+    ALLOWED_IMPORTS.update(["ctypes", "ctypes.wintypes", "msvcrt", "time"])
 
 
 def test_light_imports():

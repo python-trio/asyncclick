@@ -3,6 +3,7 @@ import io
 import os
 import re
 import sys
+import typing as t
 from weakref import WeakKeyDictionary
 
 CYGWIN = sys.platform.startswith("cygwin")
@@ -12,10 +13,7 @@ APP_ENGINE = "APPENGINE_RUNTIME" in os.environ and "Development/" in os.environ.
     "SERVER_SOFTWARE", ""
 )
 WIN = sys.platform.startswith("win") and not APP_ENGINE and not MSYS2
-DEFAULT_COLUMNS = 80
-auto_wrap_for_ansi = None
-colorama = None
-get_winterm_size = None
+auto_wrap_for_ansi: t.Optional[t.Callable[[t.TextIO], t.TextIO]] = None
 _ansi_re = re.compile(r"\033\[[;?0-9]*[a-zA-Z]")
 
 
@@ -473,11 +471,6 @@ def strip_ansi(value):
 
 
 def _is_jupyter_kernel_output(stream):
-    if WIN:
-        # TODO: Couldn't test on Windows, should't try to support until
-        # someone tests the details wrt colorama.
-        return
-
     while isinstance(stream, (_FixupStream, _NonClosingTextIOWrapper)):
         stream = stream._stream
 
@@ -492,13 +485,10 @@ def should_strip_ansi(stream=None, color=None):
     return not color
 
 
-# If we're on Windows, we provide transparent integration through
-# colorama.  This will make ANSI colors through the echo function
-# work automatically.
-if WIN:
-    # Windows has a smaller terminal
-    DEFAULT_COLUMNS = 79
-
+# On Windows, wrap the output streams with colorama to support ANSI
+# color codes.
+# NOTE: double check is needed so mypy does not analyze this on Linux
+if sys.platform.startswith("win") and WIN:
     from ._winconsole import _get_windows_console_stream
 
     def _get_argv_encoding():
@@ -506,49 +496,44 @@ if WIN:
 
         return locale.getpreferredencoding()
 
-    try:
+    _ansi_stream_wrappers: t.MutableMapping[t.TextIO, t.TextIO] = WeakKeyDictionary()
+
+    def auto_wrap_for_ansi(
+        stream: t.TextIO, color: t.Optional[bool] = None
+    ) -> t.TextIO:
+        """Support ANSI color and style codes on Windows by wrapping a
+        stream with colorama.
+        """
+        try:
+            cached = _ansi_stream_wrappers.get(stream)
+        except Exception:
+            cached = None
+
+        if cached is not None:
+            return cached
+
         import colorama
-    except ImportError:
-        pass
-    else:
-        _ansi_stream_wrappers = WeakKeyDictionary()
 
-        def auto_wrap_for_ansi(stream, color=None):
-            """This function wraps a stream so that calls through colorama
-            are issued to the win32 console API to recolor on demand.  It
-            also ensures to reset the colors if a write call is interrupted
-            to not destroy the console afterwards.
-            """
+        strip = should_strip_ansi(stream, color)
+        ansi_wrapper = colorama.AnsiToWin32(stream, strip=strip)
+        rv = t.cast(t.TextIO, ansi_wrapper.stream)
+        _write = rv.write
+
+        def _safe_write(s):
             try:
-                cached = _ansi_stream_wrappers.get(stream)
-            except Exception:
-                cached = None
-            if cached is not None:
-                return cached
-            strip = should_strip_ansi(stream, color)
-            ansi_wrapper = colorama.AnsiToWin32(stream, strip=strip)
-            rv = ansi_wrapper.stream
-            _write = rv.write
+                return _write(s)
+            except BaseException:
+                ansi_wrapper.reset_all()
+                raise
 
-            def _safe_write(s):
-                try:
-                    return _write(s)
-                except BaseException:
-                    ansi_wrapper.reset_all()
-                    raise
+        rv.write = _safe_write
 
-            rv.write = _safe_write
-            try:
-                _ansi_stream_wrappers[stream] = rv
-            except Exception:
-                pass
-            return rv
+        try:
+            _ansi_stream_wrappers[stream] = rv
+        except Exception:
+            pass
 
-        def get_winterm_size():
-            win = colorama.win32.GetConsoleScreenBufferInfo(
-                colorama.win32.STDOUT
-            ).srWindow
-            return win.Right - win.Left, win.Bottom - win.Top
+        return rv
 
 
 else:

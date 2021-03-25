@@ -102,7 +102,6 @@ class ProgressBar:
         self.current_item = None
         self.is_hidden = not isatty(self.file)
         self._last_line = None
-        self.short_limit = 0.5
 
     def __enter__(self):
         self.entered = True
@@ -126,11 +125,8 @@ class ProgressBar:
         # twice works and does "what you want".
         return next(iter(self))
 
-    def is_fast(self):
-        return time.time() - self.start <= self.short_limit
-
     def render_finish(self):
-        if self.is_hidden or self.is_fast():
+        if self.is_hidden:
             return
         self.file.write(AFTER_BAR)
         self.file.flush()
@@ -224,9 +220,15 @@ class ProgressBar:
         ).rstrip()
 
     def render_progress(self):
-        from .termui import get_terminal_size
+        import shutil
 
         if self.is_hidden:
+            # Only output the label as it changes if the output is not a
+            # TTY. Use file=stderr if you expect to be piping stdout.
+            if self._last_line != self.label:
+                self._last_line = self.label
+                echo(self.label, file=self.file, color=self.color)
+
             return
 
         buf = []
@@ -235,7 +237,7 @@ class ProgressBar:
             old_width = self.width
             self.width = 0
             clutter_length = term_len(self.format_progress_line())
-            new_width = max(0, get_terminal_size()[0] - clutter_length)
+            new_width = max(0, shutil.get_terminal_size().columns - clutter_length)
             if new_width < old_width:
                 buf.append(BEFORE_BAR)
                 buf.append(" " * self.max_width)
@@ -257,7 +259,7 @@ class ProgressBar:
         line = "".join(buf)
         # Render the line only if it changed.
 
-        if line != self._last_line and not self.is_fast():
+        if line != self._last_line:
             self._last_line = line
             echo(line, file=self.file, color=self.color, nl=False)
             self.file.flush()
@@ -300,14 +302,13 @@ class ProgressBar:
             Only render when the number of steps meets the
             ``update_min_steps`` threshold.
         """
+        if current_item is not None:
+            self.current_item = current_item
+
         self._completed_intervals += n_steps
 
         if self._completed_intervals >= self.update_min_steps:
             self.make_step(self._completed_intervals)
-
-            if current_item is not None:
-                self.current_item = current_item
-
             self.render_progress()
             self._completed_intervals = 0
 
@@ -336,8 +337,16 @@ class ProgressBar:
         else:
             for rv in self.iter:
                 self.current_item = rv
+
+                # This allows show_item_func to be updated before the
+                # item is processed. Only trigger at the beginning of
+                # the update interval.
+                if self._completed_intervals == 0:
+                    self.render_progress()
+
                 yield rv
                 self.update(1)
+
             self.finish()
             self.render_progress()
 

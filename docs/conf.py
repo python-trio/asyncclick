@@ -25,6 +25,7 @@ extensions = [
     "sphinx_issues",
     "sphinx_tabs.tabs",
 ]
+autodoc_typehints = "description"
 intersphinx_mapping = {"python": ("https://docs.python.org/3/", None)}
 issues_github_path = "python-trio/asyncclick"
 
@@ -34,9 +35,8 @@ html_theme = "click"
 html_theme_options = {"index_sidebar_logo": False}
 html_context = {
     "project_links": [
-        ProjectLink("Donate to Pallets", "https://palletsprojects.com/donate"),
-        ProjectLink("Click Website", "https://palletsprojects.com/p/click/"),
-        ProjectLink("PyPI releases", "https://pypi.org/project/click/"),
+        ProjectLink("Donate", "https://palletsprojects.com/donate"),
+        ProjectLink("PyPI Releases", "https://pypi.org/project/click/"),
         ProjectLink("Source Code", "https://github.com/pallets/click/"),
         ProjectLink("Issue Tracker", "https://github.com/pallets/click/issues/"),
         ProjectLink("AsyncClick Fork", "https://github.com/python-trio/asyncclick/"),

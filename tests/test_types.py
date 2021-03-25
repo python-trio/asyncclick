@@ -1,4 +1,6 @@
 import asyncclick as click
+import pathlib
+
 import pytest
 
 
@@ -75,5 +77,25 @@ def test_cast_multi_default(runner, nargs, multiple, default, expect):
 
     cli = click.Command("cli", params=[param], callback=lambda a: a)
     result = runner.invoke(cli, standalone_mode=False)
+    assert result.exception is None
+    assert result.return_value == expect
+
+
+@pytest.mark.parametrize(
+    ("cls", "expect"),
+    [
+        (None, "a/b/c.txt"),
+        (str, "a/b/c.txt"),
+        (bytes, b"a/b/c.txt"),
+        (pathlib.Path, pathlib.Path("a", "b", "c.txt")),
+    ],
+)
+def test_path_type(runner, cls, expect):
+    cli = click.Command(
+        "cli",
+        params=[click.Argument(["p"], type=click.Path(path_type=cls))],
+        callback=lambda p: p,
+    )
+    result = runner.invoke(cli, ["a/b/c.txt"], standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect

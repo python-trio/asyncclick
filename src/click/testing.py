@@ -210,6 +210,7 @@ class CliRunner:
             bytes_output, encoding=self.charset, name="<stdout>", mode="w"
         )
 
+        bytes_error = None
         if self.mix_stderr:
             sys.stderr = sys.stdout
         else:
@@ -264,7 +265,7 @@ class CliRunner:
                         pass
                 else:
                     os.environ[key] = value
-            yield (bytes_output, not self.mix_stderr and bytes_error)
+            yield (bytes_output, bytes_error)
         finally:
             for key, value in old_env.items():
                 if value is None:
@@ -387,18 +388,30 @@ class CliRunner:
         )
 
     @contextlib.contextmanager
-    def isolated_filesystem(self):
-        """A context manager that creates a temporary folder and changes
-        the current working directory to it for isolated filesystem tests.
+    def isolated_filesystem(self, temp_dir=None):
+        """A context manager that creates a temporary directory and
+        changes the current working directory to it. This isolates tests
+        that affect the contents of the CWD to prevent them from
+        interfering with each other.
+
+        :param temp_dir: Create the temporary directory under this
+            directory. If given, the created directory is not removed
+            when exiting.
+
+        .. versionchanged:: 8.0
+            Added the ``temp_dir`` parameter.
         """
         cwd = os.getcwd()
-        t = tempfile.mkdtemp()
+        t = tempfile.mkdtemp(dir=temp_dir)
         os.chdir(t)
+
         try:
             yield t
         finally:
             os.chdir(cwd)
-            try:
-                shutil.rmtree(t)
-            except OSError:  # noqa: B014
-                pass
+
+            if temp_dir is None:
+                try:
+                    shutil.rmtree(t)
+                except OSError:  # noqa: B014
+                    pass

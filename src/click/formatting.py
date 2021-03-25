@@ -1,11 +1,11 @@
+import typing as t
 from contextlib import contextmanager
 
 from ._compat import term_len
 from .parser import split_opt
-from .termui import get_terminal_size
 
 # Can force a width.  This is used by the test system
-FORCED_WIDTH = None
+FORCED_WIDTH: t.Optional[int] = None
 
 
 def measure_table(rows):
@@ -104,13 +104,15 @@ class HelpFormatter:
     """
 
     def __init__(self, indent_increment=2, width=None, max_width=None):
+        import shutil
+
         self.indent_increment = indent_increment
         if max_width is None:
             max_width = 80
         if width is None:
             width = FORCED_WIDTH
             if width is None:
-                width = max(min(get_terminal_size()[0], max_width) - 2, 50)
+                width = max(min(shutil.get_terminal_size().columns, max_width) - 2, 50)
         self.width = width
         self.current_indent = 0
         self.buffer = []

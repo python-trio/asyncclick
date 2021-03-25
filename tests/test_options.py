@@ -116,6 +116,20 @@ def test_multiple_required(runner):
     assert "Error: Missing option '-m' / '--message'." in result.output
 
 
+def test_multiple_bad_default(runner):
+    @click.command()
+    @click.option("--flags", multiple=True, default=False)
+    def cli(flags):
+        pass
+
+    result = runner.invoke(cli, [])
+    assert result.exception
+    assert (
+        "Value for parameter with multiple = True or nargs > 1 should be an iterable."
+        in result.exception.args
+    )
+
+
 def test_empty_envvar(runner):
     @click.command()
     @click.option("--mypath", type=click.Path(exists=True), envvar="MYPATH")
@@ -375,6 +389,22 @@ def test_custom_validation(runner):
     assert result.output == "42\n"
 
 
+def test_callback_validates_prompt(runner, monkeypatch):
+    def validate(ctx, param, value):
+        if value < 0:
+            raise click.BadParameter("should be positive")
+
+        return value
+
+    @click.command()
+    @click.option("-a", type=int, callback=validate, prompt=True)
+    def cli(a):
+        click.echo(a)
+
+    result = runner.invoke(cli, input="-12\n60\n")
+    assert result.output == "A: -12\nError: should be positive\nA: 60\n60\n"
+
+
 def test_winstyle_options(runner):
     @click.command()
     @click.option("/debug;/no-debug", help="Enables or disables debug mode.")
@@ -408,7 +438,7 @@ def test_missing_option_string_cast():
     ctx = click.Context(click.Command(""))
 
     with pytest.raises(click.MissingParameter) as excinfo:
-        click.Option(["-a"], required=True).full_process_value(ctx, None)
+        click.Option(["-a"], required=True).process_value(ctx, None)
 
     assert str(excinfo.value) == "missing parameter: a"
 
@@ -487,7 +517,7 @@ def test_option_help_preserve_paragraphs(runner):
     def cmd(config):
         pass
 
-    result = runner.invoke(cmd, ["--help"],)
+    result = runner.invoke(cmd, ["--help"])
     assert result.exit_code == 0
     i = " " * 21
     assert (
@@ -652,11 +682,27 @@ def test_show_default_boolean_flag_value(runner):
     value, not the opt name.
     """
     opt = click.Option(
-        ("--cache",), is_flag=True, show_default=True, help="Enable the cache.",
+        ("--cache",), is_flag=True, show_default=True, help="Enable the cache."
     )
     ctx = click.Context(click.Command("test"))
     message = opt.get_help_record(ctx)[1]
     assert "[default: False]" in message
+
+
+def test_show_default_string(runner):
+    """When show_default is a string show that value as default."""
+    opt = click.Option(["--limit"], show_default="unlimited")
+    ctx = click.Context(click.Command("cli"))
+    message = opt.get_help_record(ctx)[1]
+    assert "[default: (unlimited)]" in message
+
+
+def test_do_not_show_no_default(runner):
+    """When show_default is True and no default is set do not show None."""
+    opt = click.Option(["--limit"], show_default=True)
+    ctx = click.Context(click.Command("cli"))
+    message = opt.get_help_record(ctx)[1]
+    assert "[default: None]" not in message
 
 
 @pytest.mark.parametrize(

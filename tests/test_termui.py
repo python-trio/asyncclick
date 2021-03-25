@@ -27,16 +27,14 @@ def _create_progress(length=10, length_known=True, **kwargs):
 
 
 def test_progressbar_strip_regression(runner, monkeypatch):
-    fake_clock = FakeClock()
     label = "    padded line"
 
     @click.command()
     def cli():
         with _create_progress(label=label) as progress:
             for _ in progress:
-                fake_clock.advance_time()
+                pass
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
     assert label in runner.invoke(cli, []).output
 
@@ -60,33 +58,26 @@ def test_progressbar_length_hint(runner, monkeypatch):
 
         next = __next__
 
-    fake_clock = FakeClock()
-
     @click.command()
     def cli():
         with click.progressbar(Hinted(10), label="test") as progress:
             for _ in progress:
-                fake_clock.advance_time()
+                pass
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
     result = runner.invoke(cli, [])
     assert result.exception is None
 
 
 def test_progressbar_hidden(runner, monkeypatch):
-    fake_clock = FakeClock()
-    label = "whatever"
-
     @click.command()
     def cli():
-        with _create_progress(label=label) as progress:
+        with _create_progress(label="working") as progress:
             for _ in progress:
-                fake_clock.advance_time()
+                pass
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: False)
-    assert runner.invoke(cli, []).output == ""
+    assert runner.invoke(cli, []).output == "working\n"
 
 
 @pytest.mark.parametrize("avg, expected", [([], 0.0), ([1, 4], 2.5)])
@@ -194,21 +185,16 @@ def test_progressbar_iter_outside_with_exceptions(runner):
 
 
 def test_progressbar_is_iterator(runner, monkeypatch):
-    fake_clock = FakeClock()
-
     @click.command()
     def cli():
         with click.progressbar(range(10), label="test") as progress:
             while True:
                 try:
                     next(progress)
-                    fake_clock.advance_time()
                 except StopIteration:
                     break
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
-
     result = runner.invoke(cli, [])
     assert result.exception is None
 
@@ -290,50 +276,39 @@ def test_progressbar_update(runner, monkeypatch):
 
     lines = [line for line in output.split("\n") if "[" in line]
 
-    assert " 25%  00:00:03" in lines[0]
-    assert " 50%  00:00:02" in lines[1]
-    assert " 75%  00:00:01" in lines[2]
-    assert "100%          " in lines[3]
+    assert "  0%" in lines[0]
+    assert " 25%  00:00:03" in lines[1]
+    assert " 50%  00:00:02" in lines[2]
+    assert " 75%  00:00:01" in lines[3]
+    assert "100%          " in lines[4]
 
 
 def test_progressbar_item_show_func(runner, monkeypatch):
-    fake_clock = FakeClock()
+    """item_show_func should show the current item being yielded."""
 
     @click.command()
     def cli():
-        with click.progressbar(
-            range(4), item_show_func=lambda x: f"Custom {x}"
-        ) as progress:
-            for _ in progress:
-                fake_clock.advance_time()
-                print("")
+        with click.progressbar(range(3), item_show_func=lambda x: str(x)) as progress:
+            for item in progress:
+                click.echo(f" item {item}")
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
-    output = runner.invoke(cli, []).output
+    lines = runner.invoke(cli).output.splitlines()
 
-    lines = [line for line in output.split("\n") if "[" in line]
-
-    assert "Custom 0" in lines[0]
-    assert "Custom 1" in lines[1]
-    assert "Custom 2" in lines[2]
-    assert "Custom None" in lines[3]
+    for i, line in enumerate(x for x in lines if "item" in x):
+        assert f"{i}    item {i}" in line
 
 
 def test_progressbar_update_with_item_show_func(runner, monkeypatch):
-    fake_clock = FakeClock()
-
     @click.command()
     def cli():
         with click.progressbar(
             length=6, item_show_func=lambda x: f"Custom {x}"
         ) as progress:
             while not progress.finished:
-                fake_clock.advance_time()
                 progress.update(2, progress.pos)
-                print("")
+                click.echo()
 
-    monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
     output = runner.invoke(cli, []).output
 
@@ -380,7 +355,7 @@ def test_getchar_special_key_windows(runner, monkeypatch, special_key_char, key_
 
 
 @pytest.mark.parametrize(
-    ("key_char", "exc"), [("\x03", KeyboardInterrupt), ("\x1a", EOFError)],
+    ("key_char", "exc"), [("\x03", KeyboardInterrupt), ("\x1a", EOFError)]
 )
 @pytest.mark.skipif(not WIN, reason="Tests user-input using the msvcrt module.")
 def test_getchar_windows_exceptions(runner, monkeypatch, key_char, exc):
@@ -446,3 +421,27 @@ def test_prompt_required_false(runner, args, expect):
     result = runner.invoke(cli, args=args, input="prompt", standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
+
+
+@pytest.mark.parametrize(
+    ("prompt", "input", "expect"),
+    [
+        (True, "password\npassword", "password"),
+        ("Confirm Password", "password\npassword\n", "password"),
+        (False, None, None),
+    ],
+)
+def test_confirmation_prompt(runner, prompt, input, expect):
+    @click.command()
+    @click.option(
+        "--password", prompt=prompt, hide_input=True, confirmation_prompt=prompt
+    )
+    def cli(password):
+        return password
+
+    result = runner.invoke(cli, input=input, standalone_mode=False)
+    assert result.exception is None
+    assert result.return_value == expect
+
+    if prompt == "Confirm Password":
+        assert "Confirm Password: " in result.output
