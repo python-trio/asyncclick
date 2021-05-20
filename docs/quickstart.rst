@@ -32,12 +32,7 @@ install separate copies of Python, but it does provide a clever way to
 keep different project environments isolated.  Let's see how virtualenv
 works.
 
-If you are on Mac OS X or Linux, chances are that one of the following two
-commands will work for you::
-
-    $ sudo easy_install virtualenv
-
-or even better::
+If you are on Mac OS X or Linux::
 
     $ pip install virtualenv --user
 
@@ -84,7 +79,7 @@ After doing this, the prompt of your shell should be as familiar as before.
 Now, let's move on. Enter the following command to get Click activated in your
 virtualenv::
 
-    $ pip install Click
+    $ pip install click
 
 A few seconds later and you are good to go.
 
@@ -102,23 +97,23 @@ Examples of Click applications can be found in the documentation as well
 as in the GitHub repository together with readme files:
 
 *   ``inout``: `File input and output
-    <https://github.com/pallets/click/tree/master/examples/inout>`_
+    <https://github.com/pallets/click/tree/main/examples/inout>`_
 *   ``naval``: `Port of docopt naval example
-    <https://github.com/pallets/click/tree/master/examples/naval>`_
+    <https://github.com/pallets/click/tree/main/examples/naval>`_
 *   ``aliases``: `Command alias example
-    <https://github.com/pallets/click/tree/master/examples/aliases>`_
+    <https://github.com/pallets/click/tree/main/examples/aliases>`_
 *   ``repo``: `Git-/Mercurial-like command line interface
-    <https://github.com/pallets/click/tree/master/examples/repo>`_
+    <https://github.com/pallets/click/tree/main/examples/repo>`_
 *   ``complex``: `Complex example with plugin loading
-    <https://github.com/pallets/click/tree/master/examples/complex>`_
+    <https://github.com/pallets/click/tree/main/examples/complex>`_
 *   ``validation``: `Custom parameter validation example
-    <https://github.com/pallets/click/tree/master/examples/validation>`_
-*   ``colors``: `Colorama ANSI color support
-    <https://github.com/pallets/click/tree/master/examples/colors>`_
+    <https://github.com/pallets/click/tree/main/examples/validation>`_
+*   ``colors``: `Color support demo
+    <https://github.com/pallets/click/tree/main/examples/colors>`_
 *   ``termui``: `Terminal UI functions demo
-    <https://github.com/pallets/click/tree/master/examples/termui>`_
+    <https://github.com/pallets/click/tree/main/examples/termui>`_
 *   ``imagepipe``: `Multi command chaining demo
-    <https://github.com/pallets/click/tree/master/examples/imagepipe>`_
+    <https://github.com/pallets/click/tree/main/examples/imagepipe>`_
 
 Basic Concepts - Creating a Command
 -----------------------------------
@@ -162,7 +157,7 @@ Echoing
 
 Why does this example use :func:`echo` instead of the regular
 :func:`print` function?  The answer to this question is that Click
-attempts to support both Python 2 and Python 3 the same way and to be very
+attempts to support different environments consistently and to be very
 robust even when the environment is misconfigured.  Click wants to be
 functional at least on a basic level even if everything is completely
 broken.
@@ -171,12 +166,10 @@ What this means is that the :func:`echo` function applies some error
 correction in case the terminal is misconfigured instead of dying with an
 :exc:`UnicodeError`.
 
-As an added benefit, starting with Click 2.0, the echo function also
-has good support for ANSI colors.  It will automatically strip ANSI codes
-if the output stream is a file and if colorama is supported, ANSI colors
-will also work on Windows. Note that in Python 2, the :func:`echo` function
-does not parse color code information from bytearrays. See :ref:`ansi-colors`
-for more information.
+The echo function also supports color and other styles in output. It
+will automatically remove styles if the output stream is a file. On
+Windows, colorama is automatically installed and used. See
+:ref:`ansi-colors`.
 
 If you don't need this, you can also use the `print()` construct /
 function.
@@ -233,6 +226,30 @@ other invocations::
     if __name__ == '__main__':
         cli()
 
+
+Registering Commands Later
+--------------------------
+
+Instead of using the ``@group.command()`` decorator, commands can be
+decorated with the plain ``@click.command()`` decorator and registered
+with a group later with ``group.add_command()``. This could be used to
+split commands into multiple Python modules.
+
+.. code-block:: python
+
+    @click.command()
+    def greet():
+        click.echo("Hello, World!")
+
+.. code-block:: python
+
+    @click.group()
+    def group():
+        pass
+
+    group.add_command(greet)
+
+
 Adding Parameters
 -----------------
 
@@ -245,7 +262,7 @@ To add parameters, use the :func:`option` and :func:`argument` decorators:
     @click.argument('name')
     def hello(count, name):
         for x in range(count):
-            click.echo('Hello %s!' % name)
+            click.echo(f"Hello {name}!")
 
 What it looks like:
 

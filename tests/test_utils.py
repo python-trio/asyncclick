@@ -1,18 +1,20 @@
 import os
+import pathlib
 import stat
 import sys
+from io import StringIO
 
 import pytest
 
 import asyncclick as click
 import asyncclick._termui_impl
 import asyncclick.utils
-from click._compat import WIN
+from asyncclick._compat import WIN
 
 
 def test_echo(runner):
     with runner.isolation() as outstreams:
-        click.echo(u"\N{SNOWMAN}")
+        click.echo("\N{SNOWMAN}")
         click.echo(b"\x44\x44")
         click.echo(42, nl=False)
         click.echo(b"a", nl=False)
@@ -20,19 +22,7 @@ def test_echo(runner):
         bytes = outstreams[0].getvalue().replace(b"\r\n", b"\n")
         assert bytes == b"\xe2\x98\x83\nDD\n42ax"
 
-    # If we are in Python 2, we expect that writing bytes into a string io
-    # does not do anything crazy.  In Python 3
-    if sys.version_info[0] == 2:
-        import StringIO
-
-        sys.stdout = x = StringIO.StringIO()
-        try:
-            click.echo("\xf6")
-        finally:
-            sys.stdout = sys.__stdout__
-        assert x.getvalue() == "\xf6\n"
-
-    # And in any case, if wrapped, we expect bytes to survive.
+    # if wrapped, we expect bytes to survive.
     @click.command()
     def cli():
         click.echo(b"\xf6")
@@ -50,8 +40,8 @@ def test_echo_custom_file():
     import io
 
     f = io.StringIO()
-    click.echo(u"hello", file=f)
-    assert f.getvalue() == u"hello\n"
+    click.echo("hello", file=f)
+    assert f.getvalue() == "hello\n"
 
 
 @pytest.mark.parametrize(
@@ -73,10 +63,17 @@ def test_echo_custom_file():
         ({"bg": "magenta"}, "\x1b[45mx y\x1b[0m"),
         ({"bg": "cyan"}, "\x1b[46mx y\x1b[0m"),
         ({"bg": "white"}, "\x1b[47mx y\x1b[0m"),
-        ({"blink": True}, "\x1b[5mx y\x1b[0m"),
-        ({"underline": True}, "\x1b[4mx y\x1b[0m"),
+        ({"bg": 91}, "\x1b[48;5;91mx y\x1b[0m"),
+        ({"bg": (135, 0, 175)}, "\x1b[48;2;135;0;175mx y\x1b[0m"),
         ({"bold": True}, "\x1b[1mx y\x1b[0m"),
         ({"dim": True}, "\x1b[2mx y\x1b[0m"),
+        ({"underline": True}, "\x1b[4mx y\x1b[0m"),
+        ({"overline": True}, "\x1b[55mx y\x1b[0m"),
+        ({"italic": True}, "\x1b[23mx y\x1b[0m"),
+        ({"blink": True}, "\x1b[5mx y\x1b[0m"),
+        ({"reverse": True}, "\x1b[7mx y\x1b[0m"),
+        ({"strikethrough": True}, "\x1b[9mx y\x1b[0m"),
+        ({"fg": "black", "reset": False}, "\x1b[30mx y"),
     ],
 )
 def test_styling(styles, ref):
@@ -92,14 +89,12 @@ def test_unstyle_other_ansi(text, expect):
 def test_filename_formatting():
     assert click.format_filename(b"foo.txt") == "foo.txt"
     assert click.format_filename(b"/x/foo.txt") == "/x/foo.txt"
-    assert click.format_filename(u"/x/foo.txt") == "/x/foo.txt"
-    assert click.format_filename(u"/x/foo.txt", shorten=True) == "foo.txt"
+    assert click.format_filename("/x/foo.txt") == "/x/foo.txt"
+    assert click.format_filename("/x/foo.txt", shorten=True) == "foo.txt"
 
     # filesystem encoding on windows permits this.
     if not WIN:
-        assert (
-            click.format_filename(b"/x/foo\xff.txt", shorten=True) == u"foo\ufffd.txt"
-        )
+        assert click.format_filename(b"/x/foo\xff.txt", shorten=True) == "foo\udcff.txt"
 
 
 def test_prompts(runner):
@@ -142,6 +137,14 @@ def test_prompts(runner):
     assert result.output == "Foo [Y/n]: n\nno :(\n"
 
 
+def test_confirm_repeat(runner):
+    cli = click.Command(
+        "cli", params=[click.Option(["--a/--no-a"], default=None, prompt=True)]
+    )
+    result = runner.invoke(cli, input="\ny\n")
+    assert result.output == "A [y/n]: \nError: invalid input\nA [y/n]: y\n"
+
+
 @pytest.mark.skipif(WIN, reason="Different behavior on windows.")
 def test_prompts_abort(monkeypatch, capsys):
     def f(_):
@@ -152,10 +155,10 @@ def test_prompts_abort(monkeypatch, capsys):
     try:
         click.prompt("Password", hide_input=True)
     except click.Abort:
-        click.echo("Screw you.")
+        click.echo("interrupted")
 
     out, err = capsys.readouterr()
-    assert out == "Password: \nScrew you.\n"
+    assert out == "Password:\ninterrupted\n"
 
 
 def _test_gen_func():
@@ -204,31 +207,34 @@ def test_echo_color_flag(monkeypatch, capfd):
 
     click.echo(styled_text, color=False)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(text)
+    assert out == f"{text}\n"
 
     click.echo(styled_text, color=True)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(styled_text)
+    assert out == f"{styled_text}\n"
 
     isatty = True
     click.echo(styled_text)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(styled_text)
+    assert out == f"{styled_text}\n"
 
     isatty = False
     click.echo(styled_text)
     out, err = capfd.readouterr()
-    assert out == "{}\n".format(text)
+    assert out == f"{text}\n"
+
+
+def test_prompt_cast_default(capfd, monkeypatch):
+    monkeypatch.setattr(sys, "stdin", StringIO("\n"))
+    value = click.prompt("value", default="100", type=int)
+    capfd.readouterr()
+    assert type(value) is int
 
 
 @pytest.mark.skipif(WIN, reason="Test too complex to make work windows.")
 def test_echo_writing_to_standard_error(capfd, monkeypatch):
     def emulate_input(text):
         """Emulate keyboard input."""
-        if sys.version_info[0] == 2:
-            from StringIO import StringIO
-        else:
-            from io import StringIO
         monkeypatch.setattr(sys, "stdin", StringIO(text))
 
     click.echo("Echo to standard output")
@@ -250,8 +256,8 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     emulate_input("asdlkj\n")
     click.prompt("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
-    assert out == ""
-    assert err == "Prompt to stderr: "
+    assert out == " "
+    assert err == "Prompt to stderr:"
 
     emulate_input("y\n")
     click.confirm("Prompt to stdin")
@@ -277,6 +283,12 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     out, err = capfd.readouterr()
     assert out == ""
     assert err == "Pause to stderr\n"
+
+
+def test_echo_with_capsys(capsys):
+    click.echo("Capture me.")
+    out, err = capsys.readouterr()
+    assert out == "Capture me.\n"
 
 
 def test_open_file(runner):
@@ -394,3 +406,78 @@ def test_iter_lazyfile(tmpdir):
         with asyncclick.utils.LazyFile(f.name) as lf:
             for e_line, a_line in zip(expected, lf):
                 assert e_line == a_line.strip()
+
+
+class MockMain:
+    __slots__ = "__package__"
+
+    def __init__(self, package_name):
+        self.__package__ = package_name
+
+
+@pytest.mark.parametrize(
+    ("path", "main", "expected"),
+    [
+        ("example.py", None, "example.py"),
+        (str(pathlib.Path("/foo/bar/example.py")), None, "example.py"),
+        ("example", None, "example"),
+        (
+            str(pathlib.Path("example/__main__.py")),
+            MockMain(".example"),
+            "python -m example",
+        ),
+        (
+            str(pathlib.Path("example/cli.py")),
+            MockMain(".example"),
+            "python -m example.cli",
+        ),
+    ],
+)
+def test_detect_program_name(path, main, expected):
+    assert click.utils._detect_program_name(path, _main=main) == expected
+
+
+def test_expand_args(monkeypatch):
+    user = os.path.expanduser("~")
+    assert user in click.utils._expand_args(["~"])
+    monkeypatch.setenv("CLICK_TEST", "hello")
+    assert "hello" in click.utils._expand_args(["$CLICK_TEST"])
+    assert "setup.cfg" in click.utils._expand_args(["*.cfg"])
+    assert os.path.join("docs", "conf.py") in click.utils._expand_args(["**/conf.py"])
+    assert "*.not-found" in click.utils._expand_args(["*.not-found"])
+
+
+@pytest.mark.parametrize(
+    ("value", "max_length", "expect"),
+    [
+        pytest.param("", 10, "", id="empty"),
+        pytest.param("123 567 90", 10, "123 567 90", id="equal length, no dot"),
+        pytest.param("123 567 9. aaaa bbb", 10, "123 567 9.", id="sentence < max"),
+        pytest.param("123 567\n\n 9. aaaa bbb", 10, "123 567", id="paragraph < max"),
+        pytest.param("123 567 90123.", 10, "123 567...", id="truncate"),
+        pytest.param("123 5678 xxxxxx", 10, "123...", id="length includes suffix"),
+        pytest.param(
+            "token in ~/.netrc ciao ciao",
+            20,
+            "token in ~/.netrc...",
+            id="ignore dot in word",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "alter",
+    [
+        pytest.param(None, id=""),
+        pytest.param(
+            lambda text: "\n\b\n" + "  ".join(text.split(" ")) + "\n", id="no-wrap mark"
+        ),
+    ],
+)
+def test_make_default_short_help(value, max_length, alter, expect):
+    assert len(expect) <= max_length
+
+    if alter:
+        value = alter(value)
+
+    out = click.utils.make_default_short_help(value, max_length)
+    assert out == expect

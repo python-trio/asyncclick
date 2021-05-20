@@ -47,10 +47,10 @@ different behavior and some are supported out of the box:
     A parameter that only accepts floating point values.
 
 ``bool`` / :data:`click.BOOL`:
-    A parameter that accepts boolean values.  This is automatically used
-    for boolean flags.  If used with string values ``1``, ``yes``, ``y``, ``t``
-    and ``true`` convert to `True` and ``0``, ``no``, ``n``, ``f`` and ``false``
-    convert to `False`.
+    A parameter that accepts boolean values. This is automatically used
+    for boolean flags. The string values "1", "true", "t", "yes", "y",
+    and "on" convert to ``True``. "0", "false", "f", "no", "n", and
+    "off" convert to ``False``.
 
 :data:`click.UUID`:
     A parameter that accepts UUID values.  This is not automatically
@@ -118,19 +118,15 @@ integers.
         name = "integer"
 
         def convert(self, value, param, ctx):
+            if isinstance(value, int):
+                return value
+
             try:
                 if value[:2].lower() == "0x":
                     return int(value[2:], 16)
                 elif value[:1] == "0":
                     return int(value, 8)
                 return int(value, 10)
-            except TypeError:
-                self.fail(
-                    "expected string for int() conversion, got "
-                    f"{value!r} of type {type(value).__name__}",
-                    param,
-                    ctx,
-                )
             except ValueError:
                 self.fail(f"{value!r} is not a valid integer", param, ctx)
 
@@ -140,3 +136,8 @@ The :attr:`~ParamType.name` attribute is optional and is used for
 documentation. Call :meth:`~ParamType.fail` if conversion fails. The
 ``param`` and ``ctx`` arguments may be ``None`` in some cases such as
 prompts.
+
+Values from user input or the command line will be strings, but default
+values and Python arguments may already be the correct type. The custom
+type should check at the top if the value is already valid and pass it
+through to support those cases.

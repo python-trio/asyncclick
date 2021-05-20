@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import re
 from inspect import iscoroutine
 
@@ -17,7 +16,8 @@ def test_other_command_invoke(runner):
         click.echo(arg)
 
     result = runner.invoke(cli, [])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "42\n"
 
 
@@ -28,7 +28,7 @@ async def test_other_command_forward(runner):
     @cli.command()
     @click.option("--count", default=1)
     def test(count):
-        click.echo("Count: {:d}".format(count))
+        click.echo(f"Count: {count:d}")
 
     @cli.command()
     @click.option("--count", default=1)
@@ -41,6 +41,30 @@ async def test_other_command_forward(runner):
     if result.exception:
         raise result.exception
     assert result.output == "Count: 1\nCount: 42\n"
+
+
+@pytest.mark.anyio
+async def test_forwarded_params_consistency(runner):
+    cli = click.Group()
+
+    @cli.command()
+    @click.option("-a")
+    @click.pass_context
+    def first(ctx, **kwargs):
+        click.echo(f"{ctx.params}")
+
+    @cli.command()
+    @click.option("-a")
+    @click.option("-b")
+    @click.pass_context
+    async def second(ctx, **kwargs):
+        click.echo(f"{ctx.params}")
+        await ctx.forward(first)
+
+    result = runner.invoke(cli, ["second", "-a", "foo", "-b", "bar"])
+    if result.exception:
+        raise result.exception
+    assert result.output == "{'a': 'foo', 'b': 'bar'}\n{'a': 'foo', 'b': 'bar'}\n"
 
 
 def test_auto_shorthelp(runner):
@@ -97,7 +121,8 @@ def test_default_maps(runner):
 
     result = runner.invoke(cli, ["foo"], default_map={"foo": {"name": "changed"}})
 
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "changed\n"
 
 
@@ -105,7 +130,7 @@ def test_group_with_args(runner):
     @click.group()
     @click.argument("obj")
     def cli(obj):
-        click.echo("obj={}".format(obj))
+        click.echo(f"obj={obj}")
 
     @cli.command()
     def move():
@@ -137,7 +162,7 @@ def test_base_command(runner):
 
     class OptParseCommand(click.BaseCommand):
         def __init__(self, name, parser, callback):
-            click.BaseCommand.__init__(self, name)
+            super().__init__(name)
             self.parser = parser
             self.callback = callback
 
@@ -183,7 +208,8 @@ def test_base_command(runner):
     result = runner.invoke(
         cli, ["test", "-f", "test.txt", "-q", "whatever.txt", "whateverelse.txt"]
     )
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output.splitlines() == [
         "whatever.txt whateverelse.txt",
         "test.txt",
@@ -191,7 +217,8 @@ def test_base_command(runner):
     ]
 
     result = runner.invoke(cli, ["test", "--help"])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output.splitlines() == [
         "Usage: foo test [OPTIONS]",
         "",
@@ -216,7 +243,7 @@ def test_object_propagation(runner):
         @cli.command()
         @click.pass_context
         def sync(ctx):
-            click.echo("Debug is {}".format("on" if ctx.obj["DEBUG"] else "off"))
+            click.echo(f"Debug is {'on' if ctx.obj['DEBUG'] else 'off'}")
 
         result = runner.invoke(cli, ["sync"])
         assert result.exception is None
@@ -237,7 +264,8 @@ def test_other_command_invoke_with_defaults(runner):
         click.echo(foo)
 
     result = runner.invoke(cli, [])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "42\n"
 
 
@@ -256,12 +284,45 @@ def test_invoked_subcommand(runner):
         click.echo("in subcommand")
 
     result = runner.invoke(cli, ["sync"])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "invoke subcommand\nin subcommand\n"
 
     result = runner.invoke(cli)
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "no subcommand, use default\nin subcommand\n"
+
+
+def test_aliased_command_canonical_name(runner):
+    class AliasedGroup(click.Group):
+        def get_command(self, ctx, cmd_name):
+            return push
+
+        async def resolve_command(self, ctx, args):
+            _, command, args = await super().resolve_command(ctx, args)
+            return command.name, command, args
+
+    cli = AliasedGroup()
+
+    @cli.command()
+    def push():
+        click.echo("push command")
+
+    result = runner.invoke(cli, ["pu", "--help"])
+    if result.exception:
+        raise result.exception
+    assert result.output.startswith("Usage: root push [OPTIONS]")
+
+
+def test_group_add_command_name(runner):
+    cli = click.Group("cli")
+    cmd = click.Command("a", params=[click.Option(["-x"], required=True)])
+    cli.add_command(cmd, "b")
+    # Check that the command is accessed through the registered name,
+    # not the original name.
+    result = runner.invoke(cli, ["b"], default_map={"b": {"x": 3}})
+    assert result.exit_code == 0
 
 
 def test_unprocessed_options(runner):
@@ -269,11 +330,12 @@ def test_unprocessed_options(runner):
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     @click.option("--verbose", "-v", count=True)
     def cli(verbose, args):
-        click.echo("Verbosity: {}".format(verbose))
-        click.echo("Args: {}".format("|".join(args)))
+        click.echo(f"Verbosity: {verbose}")
+        click.echo(f"Args: {'|'.join(args)}")
 
     result = runner.invoke(cli, ["-foo", "-vvvvx", "--muhaha", "x", "y", "-x"])
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output.splitlines() == [
         "Verbosity: 4",
         "Args: -foo|-x|--muhaha|x|y|-x",
@@ -287,14 +349,14 @@ def test_deprecated_in_help_messages(runner):
         pass
 
     result = runner.invoke(cmd_with_help, ["--help"])
-    assert "(DEPRECATED)" in result.output
+    assert "(Deprecated)" in result.output
 
     @click.command(deprecated=True)
     def cmd_without_help():
         pass
 
     result = runner.invoke(cmd_without_help, ["--help"])
-    assert "(DEPRECATED)" in result.output
+    assert "(Deprecated)" in result.output
 
 
 def test_deprecated_in_invocation(runner):

@@ -1,14 +1,10 @@
+import configparser
 import os
 
 import asyncclick as click
 
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
-
-class Config(object):
+class Config:
     """The config in this example only holds aliases."""
 
     def __init__(self):
@@ -53,7 +49,7 @@ class AliasedGroup(click.Group):
         # will create the config object is missing.
         cfg = ctx.ensure_object(Config)
 
-        # Step three: lookup an explicit command aliase in the config
+        # Step three: look up an explicit command alias in the config
         if cmd_name in cfg.aliases:
             actual_cmd = cfg.aliases[cmd_name]
             return click.Group.get_command(self, ctx, actual_cmd)
@@ -69,7 +65,12 @@ class AliasedGroup(click.Group):
             return None
         elif len(matches) == 1:
             return click.Group.get_command(self, ctx, matches[0])
-        ctx.fail("Too many matches: {}".format(", ".join(sorted(matches))))
+        ctx.fail(f"Too many matches: {', '.join(sorted(matches))}")
+
+    def resolve_command(self, ctx, args):
+        # always return the command's name, not the alias
+        _, cmd, args = super().resolve_command(ctx, args)
+        return cmd.name, cmd, args
 
 
 def read_config(ctx, param, value):
@@ -125,7 +126,7 @@ def commit():
 @pass_config
 def status(config):
     """Shows the status."""
-    click.echo("Status for {}".format(config.path))
+    click.echo(f"Status for {config.path}")
 
 
 @cli.command()
@@ -139,4 +140,4 @@ def alias(config, alias_, cmd, config_file):
     """Adds an alias to the specified configuration file."""
     config.add_alias(alias_, cmd)
     config.write_config(config_file)
-    click.echo("Added '{}' as alias for '{}'".format(alias_, cmd))
+    click.echo(f"Added '{alias_}' as alias for '{cmd}'")

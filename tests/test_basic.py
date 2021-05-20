@@ -1,6 +1,7 @@
-# -*- coding: utf-8 -*-
 import os
 import uuid
+from itertools import chain
+
 import pytest
 
 import asyncclick as click
@@ -81,11 +82,35 @@ def test_basic_group(runner):
     assert "SUBCOMMAND EXECUTED" in result.output
 
 
+def test_group_commands_dict(runner):
+    """A Group can be built with a dict of commands."""
+
+    @click.command()
+    def sub():
+        click.echo("sub", nl=False)
+
+    cli = click.Group(commands={"other": sub})
+    result = runner.invoke(cli, ["other"])
+    assert result.output == "sub"
+
+
+def test_group_from_list(runner):
+    """A Group can be built with a list of commands."""
+
+    @click.command()
+    def sub():
+        click.echo("sub", nl=False)
+
+    cli = click.Group(commands=[sub])
+    result = runner.invoke(cli, ["sub"])
+    assert result.output == "sub"
+
+
 def test_basic_option(runner):
     @click.command()
     @click.option("--foo", default="no value")
     def cli(foo):
-        click.echo(u"FOO:[{}]".format(foo))
+        click.echo(f"FOO:[{foo}]")
 
     result = runner.invoke(cli, [])
     assert not result.exception
@@ -97,22 +122,22 @@ def test_basic_option(runner):
 
     result = runner.invoke(cli, ["--foo"])
     assert result.exception
-    assert "--foo option requires an argument" in result.output
+    assert "Option '--foo' requires an argument." in result.output
 
     result = runner.invoke(cli, ["--foo="])
     assert not result.exception
     assert "FOO:[]" in result.output
 
-    result = runner.invoke(cli, [u"--foo=\N{SNOWMAN}"])
+    result = runner.invoke(cli, ["--foo=\N{SNOWMAN}"])
     assert not result.exception
-    assert u"FOO:[\N{SNOWMAN}]" in result.output
+    assert "FOO:[\N{SNOWMAN}]" in result.output
 
 
 def test_int_option(runner):
     @click.command()
     @click.option("--foo", default=42)
     def cli(foo):
-        click.echo("FOO:[{}]".format(foo * 2))
+        click.echo(f"FOO:[{foo * 2}]")
 
     result = runner.invoke(cli, [])
     assert not result.exception
@@ -124,7 +149,7 @@ def test_int_option(runner):
 
     result = runner.invoke(cli, ["--foo=bar"])
     assert result.exception
-    assert "Invalid value for '--foo': bar is not a valid integer" in result.output
+    assert "Invalid value for '--foo': 'bar' is not a valid integer." in result.output
 
 
 def test_uuid_option(runner):
@@ -134,7 +159,7 @@ def test_uuid_option(runner):
     )
     def cli(u):
         assert type(u) is uuid.UUID
-        click.echo("U:[{}]".format(u))
+        click.echo(f"U:[{u}]")
 
     result = runner.invoke(cli, [])
     assert not result.exception
@@ -146,7 +171,7 @@ def test_uuid_option(runner):
 
     result = runner.invoke(cli, ["--u=bar"])
     assert result.exception
-    assert "Invalid value for '--u': bar is not a valid UUID value" in result.output
+    assert "Invalid value for '--u': 'bar' is not a valid UUID." in result.output
 
 
 def test_float_option(runner):
@@ -154,7 +179,7 @@ def test_float_option(runner):
     @click.option("--foo", default=42, type=click.FLOAT)
     def cli(foo):
         assert type(foo) is float
-        click.echo("FOO:[{}]".format(foo))
+        click.echo(f"FOO:[{foo}]")
 
     result = runner.invoke(cli, [])
     assert not result.exception
@@ -166,7 +191,7 @@ def test_float_option(runner):
 
     result = runner.invoke(cli, ["--foo=bar"])
     assert result.exception
-    assert "Invalid value for '--foo': bar is not a valid float" in result.output
+    assert "Invalid value for '--foo': 'bar' is not a valid float." in result.output
 
 
 def test_boolean_option(runner):
@@ -185,7 +210,7 @@ def test_boolean_option(runner):
         assert result.output == "False\n"
         result = runner.invoke(cli, [])
         assert not result.exception
-        assert result.output == "{}\n".format(default)
+        assert result.output == f"{default}\n"
 
     for default in True, False:
 
@@ -196,33 +221,30 @@ def test_boolean_option(runner):
 
         result = runner.invoke(cli, ["--flag"])
         assert not result.exception
-        assert result.output == "{}\n".format(not default)
+        assert result.output == f"{not default}\n"
         result = runner.invoke(cli, [])
         assert not result.exception
-        assert result.output == "{}\n".format(default)
+        assert result.output == f"{default}\n"
 
 
-def test_boolean_conversion(runner):
-    for default in True, False:
+@pytest.mark.parametrize(
+    ("value", "expect"),
+    chain(
+        ((x, "True") for x in ("1", "true", "t", "yes", "y", "on")),
+        ((x, "False") for x in ("0", "false", "f", "no", "n", "off")),
+    ),
+)
+def test_boolean_conversion(runner, value, expect):
+    @click.command()
+    @click.option("--flag", type=bool)
+    def cli(flag):
+        click.echo(flag, nl=False)
 
-        @click.command()
-        @click.option("--flag", default=default, type=bool)
-        def cli(flag):
-            click.echo(flag)
+    result = runner.invoke(cli, ["--flag", value])
+    assert result.output == expect
 
-        for value in "true", "t", "1", "yes", "y":
-            result = runner.invoke(cli, ["--flag", value])
-            assert not result.exception
-            assert result.output == "True\n"
-
-        for value in "false", "f", "0", "no", "n":
-            result = runner.invoke(cli, ["--flag", value])
-            assert not result.exception
-            assert result.output == "False\n"
-
-        result = runner.invoke(cli, [])
-        assert not result.exception
-        assert result.output == "{}\n".format(default)
+    result = runner.invoke(cli, ["--flag", value.title()])
+    assert result.output == expect
 
 
 def test_file_option(runner):
@@ -283,10 +305,7 @@ def test_file_lazy_mode(runner):
         os.mkdir("example.txt")
         result_in = runner.invoke(input_non_lazy, ["--file=example.txt"])
         assert result_in.exit_code == 2
-        assert (
-            "Invalid value for '--file': Could not open file: example.txt"
-            in result_in.output
-        )
+        assert "Invalid value for '--file': 'example.txt'" in result_in.output
 
 
 def test_path_option(runner):
@@ -311,8 +330,8 @@ def test_path_option(runner):
     @click.command()
     @click.option("-f", type=click.Path(exists=True))
     def showtype(f):
-        click.echo("is_file={}".format(os.path.isfile(f)))
-        click.echo("is_dir={}".format(os.path.isdir(f)))
+        click.echo(f"is_file={os.path.isfile(f)}")
+        click.echo(f"is_dir={os.path.isdir(f)}")
 
     with runner.isolated_filesystem():
         result = runner.invoke(showtype, ["-f", "xxx"])
@@ -325,7 +344,7 @@ def test_path_option(runner):
     @click.command()
     @click.option("-f", type=click.Path())
     def exists(f):
-        click.echo("exists={}".format(os.path.exists(f)))
+        click.echo(f"exists={os.path.exists(f)}")
 
     with runner.isolated_filesystem():
         result = runner.invoke(exists, ["-f", "xxx"])
@@ -348,12 +367,33 @@ def test_choice_option(runner):
     result = runner.invoke(cli, ["--method=meh"])
     assert result.exit_code == 2
     assert (
-        "Invalid value for '--method': invalid choice: meh."
-        " (choose from foo, bar, baz)" in result.output
+        "Invalid value for '--method': 'meh' is not one of 'foo', 'bar', 'baz'."
+        in result.output
     )
 
     result = runner.invoke(cli, ["--help"])
     assert "--method [foo|bar|baz]" in result.output
+
+
+def test_choice_argument(runner):
+    @click.command()
+    @click.argument("method", type=click.Choice(["foo", "bar", "baz"]))
+    def cli(method):
+        click.echo(method)
+
+    result = runner.invoke(cli, ["foo"])
+    assert not result.exception
+    assert result.output == "foo\n"
+
+    result = runner.invoke(cli, ["meh"])
+    assert result.exit_code == 2
+    assert (
+        "Invalid value for '{foo|bar|baz}': 'meh' is not one of 'foo',"
+        " 'bar', 'baz'." in result.output
+    )
+
+    result = runner.invoke(cli, ["--help"])
+    assert "{foo|bar|baz}" in result.output
 
 
 def test_datetime_option_default(runner):
@@ -373,9 +413,8 @@ def test_datetime_option_default(runner):
     result = runner.invoke(cli, ["--start_date=2015-09"])
     assert result.exit_code == 2
     assert (
-        "Invalid value for '--start_date':"
-        " invalid datetime format: 2015-09."
-        " (choose from %Y-%m-%d, %Y-%m-%dT%H:%M:%S, %Y-%m-%d %H:%M:%S)"
+        "Invalid value for '--start_date': '2015-09' does not match the formats"
+        " '%Y-%m-%d', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'."
     ) in result.output
 
     result = runner.invoke(cli, ["--help"])
@@ -393,76 +432,6 @@ def test_datetime_option_custom(runner):
     result = runner.invoke(cli, ["--start_date=Wednesday June 05, 2010"])
     assert not result.exception
     assert result.output == "2010-06-05T00:00:00\n"
-
-
-def test_int_range_option(runner):
-    @click.command()
-    @click.option("--x", type=click.IntRange(0, 5))
-    def cli(x):
-        click.echo(x)
-
-    result = runner.invoke(cli, ["--x=5"])
-    assert not result.exception
-    assert result.output == "5\n"
-
-    result = runner.invoke(cli, ["--x=6"])
-    assert result.exit_code == 2
-    assert (
-        "Invalid value for '--x': 6 is not in the valid range of 0 to 5.\n"
-        in result.output
-    )
-
-    @click.command()
-    @click.option("--x", type=click.IntRange(0, 5, clamp=True))
-    def clamp(x):
-        click.echo(x)
-
-    result = runner.invoke(clamp, ["--x=5"])
-    assert not result.exception
-    assert result.output == "5\n"
-
-    result = runner.invoke(clamp, ["--x=6"])
-    assert not result.exception
-    assert result.output == "5\n"
-
-    result = runner.invoke(clamp, ["--x=-1"])
-    assert not result.exception
-    assert result.output == "0\n"
-
-
-def test_float_range_option(runner):
-    @click.command()
-    @click.option("--x", type=click.FloatRange(0, 5))
-    def cli(x):
-        click.echo(x)
-
-    result = runner.invoke(cli, ["--x=5.0"])
-    assert not result.exception
-    assert result.output == "5.0\n"
-
-    result = runner.invoke(cli, ["--x=6.0"])
-    assert result.exit_code == 2
-    assert (
-        "Invalid value for '--x': 6.0 is not in the valid range of 0 to 5.\n"
-        in result.output
-    )
-
-    @click.command()
-    @click.option("--x", type=click.FloatRange(0, 5, clamp=True))
-    def clamp(x):
-        click.echo(x)
-
-    result = runner.invoke(clamp, ["--x=5.0"])
-    assert not result.exception
-    assert result.output == "5.0\n"
-
-    result = runner.invoke(clamp, ["--x=6.0"])
-    assert not result.exception
-    assert result.output == "5\n"
-
-    result = runner.invoke(clamp, ["--x=-1.0"])
-    assert not result.exception
-    assert result.output == "0\n"
 
 
 def test_required_option(runner):
@@ -561,3 +530,39 @@ def test_hidden_group(runner):
     assert result.exit_code == 0
     assert "subgroup" not in result.output
     assert "nope" not in result.output
+
+
+def test_summary_line(runner):
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command()
+    def cmd():
+        """
+        Summary line without period
+
+        Here is a sentence. And here too.
+        """
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert "Summary line without period" in result.output
+    assert "Here is a sentence." not in result.output
+
+
+def test_help_invalid_default(runner):
+    cli = click.Command(
+        "cli",
+        params=[
+            click.Option(
+                ["-a"],
+                type=click.Path(exists=True),
+                default="not found",
+                show_default=True,
+            ),
+        ],
+    )
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "default: not found" in result.output

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import asyncclick as click
 
 
@@ -53,13 +52,11 @@ def test_basic_functionality(runner):
 def test_wrapping_long_options_strings(runner):
     @click.group()
     def cli():
-        """Top level command
-        """
+        """Top level command"""
 
     @cli.group()
     def a_very_long():
-        """Second level
-        """
+        """Second level"""
 
     @a_very_long.command()
     @click.argument("first")
@@ -69,8 +66,7 @@ def test_wrapping_long_options_strings(runner):
     @click.argument("fifth")
     @click.argument("sixth")
     def command():
-        """A command.
-        """
+        """A command."""
 
     # 54 is chosen as a length where the second line is one character
     # longer than the maximum length.
@@ -91,13 +87,11 @@ def test_wrapping_long_options_strings(runner):
 def test_wrapping_long_command_name(runner):
     @click.group()
     def cli():
-        """Top level command
-        """
+        """Top level command"""
 
     @cli.group()
     def a_very_very_very_long():
-        """Second level
-        """
+        """Second level"""
 
     @a_very_very_very_long.command()
     @click.argument("first")
@@ -107,8 +101,7 @@ def test_wrapping_long_command_name(runner):
     @click.argument("fifth")
     @click.argument("sixth")
     def command():
-        """A command.
-        """
+        """A command."""
 
     result = runner.invoke(
         cli, ["a-very-very-very-long", "command", "--help"], terminal_width=54
@@ -129,9 +122,11 @@ def test_wrapping_long_command_name(runner):
 def test_formatting_empty_help_lines(runner):
     @click.command()
     def cli():
+        # fmt: off
         """Top level command
 
         """
+        # fmt: on
 
     result = runner.invoke(cli, ["--help"])
     assert not result.exception
@@ -151,7 +146,7 @@ def test_formatting_usage_error(runner):
     @click.command()
     @click.argument("arg")
     def cmd(arg):
-        click.echo("arg:{}".format(arg))
+        click.echo(f"arg:{arg}")
 
     result = runner.invoke(cmd, [])
     assert result.exit_code == 2
@@ -196,7 +191,7 @@ def test_formatting_usage_error_metavar_bad_arg(runner):
         "Usage: cmd [OPTIONS] metavar",
         "Try 'cmd --help' for help.",
         "",
-        "Error: Invalid value for 'metavar': 3.14 is not a valid integer",
+        "Error: Invalid value for 'metavar': '3.14' is not a valid integer.",
     ]
 
 
@@ -208,7 +203,7 @@ def test_formatting_usage_error_nested(runner):
     @cmd.command()
     @click.argument("bar")
     def foo(bar):
-        click.echo("foo:{}".format(bar))
+        click.echo(f"foo:{bar}")
 
     result = runner.invoke(cmd, ["foo"])
     assert result.exit_code == 2
@@ -224,7 +219,7 @@ def test_formatting_usage_error_no_help(runner):
     @click.command(add_help_option=False)
     @click.argument("arg")
     def cmd(arg):
-        click.echo("arg:{}".format(arg))
+        click.echo(f"arg:{arg}")
 
     result = runner.invoke(cmd, [])
     assert result.exit_code == 2
@@ -239,7 +234,7 @@ def test_formatting_usage_custom_help(runner):
     @click.command(context_settings=dict(help_option_names=["--man"]))
     @click.argument("arg")
     def cmd(arg):
-        click.echo("arg:{}".format(arg))
+        click.echo(f"arg:{arg}")
 
     result = runner.invoke(cmd, [])
     assert result.exit_code == 2
@@ -301,13 +296,32 @@ def test_truncating_docstring(runner):
     ]
 
 
+def test_removing_multiline_marker(runner):
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command()
+    def cmd1():
+        """\b
+        This is command with a multiline help text
+        which should not be rewrapped.
+        The output of the short help text should
+        not contain the multiline marker.
+        """
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert "\b" not in result.output
+
+
 def test_global_show_default(runner):
     @click.command(context_settings=dict(show_default=True))
     @click.option("-f", "in_file", default="out.txt", help="Output file name")
     def cli():
         pass
 
-    result = runner.invoke(cli, ["--help"],)
+    result = runner.invoke(cli, ["--help"])
     assert result.output.splitlines() == [
         "Usage: cli [OPTIONS]",
         "",
@@ -317,37 +331,17 @@ def test_global_show_default(runner):
     ]
 
 
-def test_formatting_usage_multiline_option_padding(runner):
-    @click.command("foo")
-    @click.option("--bar", help="This help message will be padded if it wraps.")
-    def cli():
-        pass
-
-    result = runner.invoke(cli, "--help", terminal_width=45)
-    assert not result.exception
-    assert result.output.splitlines() == [
-        "Usage: foo [OPTIONS]",
-        "",
-        "Options:",
-        "  --bar TEXT  This help message will be",
-        "              padded if it wraps.",
-        "",
-        "  --help      Show this message and exit.",
-    ]
+def test_formatting_with_options_metavar_empty(runner):
+    cli = click.Command("cli", options_metavar="", params=[click.Argument(["var"])])
+    result = runner.invoke(cli, ["--help"])
+    assert "Usage: cli VAR\n" in result.output
 
 
-def test_formatting_usage_no_option_padding(runner):
-    @click.command("foo")
-    @click.option("--bar", help="This help message will be padded if it wraps.")
-    def cli():
-        pass
-
-    result = runner.invoke(cli, "--help", terminal_width=80)
-    assert not result.exception
-    assert result.output.splitlines() == [
-        "Usage: foo [OPTIONS]",
-        "",
-        "Options:",
-        "  --bar TEXT  This help message will be padded if it wraps.",
-        "  --help      Show this message and exit.",
-    ]
+def test_help_formatter_write_text():
+    text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+    formatter = click.HelpFormatter(width=len("  Lorem ipsum dolor sit amet,"))
+    formatter.current_indent = 2
+    formatter.write_text(text)
+    actual = formatter.getvalue()
+    expected = "  Lorem ipsum dolor sit amet,\n  consectetur adipiscing elit\n"
+    assert actual == expected

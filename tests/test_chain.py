@@ -7,9 +7,8 @@ import asyncclick as click
 
 def debug():
     click.echo(
-        "{}={}".format(
-            sys._getframe(1).f_code.co_name, "|".join(click.get_current_context().args)
-        )
+        f"{sys._getframe(1).f_code.co_name}"
+        f"={'|'.join(click.get_current_context().args)}"
     )
 
 
@@ -77,16 +76,35 @@ def test_chaining_with_options(runner):
     @cli.command("sdist")
     @click.option("--format")
     def sdist(format):
-        click.echo("sdist called {}".format(format))
+        click.echo(f"sdist called {format}")
 
     @cli.command("bdist")
     @click.option("--format")
     def bdist(format):
-        click.echo("bdist called {}".format(format))
+        click.echo(f"bdist called {format}")
 
     result = runner.invoke(cli, ["bdist", "--format=1", "sdist", "--format=2"])
     assert not result.exception
     assert result.output.splitlines() == ["bdist called 1", "sdist called 2"]
+
+
+@pytest.mark.parametrize(("chain", "expect"), [(False, "None"), (True, "[]")])
+def test_no_command_result_callback(runner, chain, expect):
+    """When a group has ``invoke_without_command=True``, the result
+    callback is always invoked. A regular group invokes it with
+    ``None``, a chained group with ``[]``.
+    """
+
+    @click.group(invoke_without_command=True, chain=chain)
+    def cli():
+        pass
+
+    @cli.result_callback()
+    def process_result(result):
+        click.echo(str(result), nl=False)
+
+    result = runner.invoke(cli, [])
+    assert result.output == expect
 
 
 def test_chaining_with_arguments(runner):
@@ -97,12 +115,12 @@ def test_chaining_with_arguments(runner):
     @cli.command("sdist")
     @click.argument("format")
     def sdist(format):
-        click.echo("sdist called {}".format(format))
+        click.echo(f"sdist called {format}")
 
     @cli.command("bdist")
     @click.argument("format")
     def bdist(format):
-        click.echo("bdist called {}".format(format))
+        click.echo(f"bdist called {format}")
 
     result = runner.invoke(cli, ["bdist", "1", "sdist", "2"])
     assert not result.exception
@@ -115,7 +133,7 @@ def test_pipeline(runner):
     def cli(input):
         pass
 
-    @cli.resultcallback()
+    @cli.result_callback()
     def process_pipeline(processors, input):
         iterator = (x.rstrip("\r\n") for x in input)
         for processor in processors:
@@ -192,7 +210,7 @@ def test_multicommand_arg_behavior(runner):
     @click.group(chain=True)
     @click.argument("arg")
     def cli(arg):
-        click.echo("cli:{}".format(arg))
+        click.echo(f"cli:{arg}")
 
     @cli.command()
     def a():
