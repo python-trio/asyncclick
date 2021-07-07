@@ -1063,14 +1063,23 @@ class BaseCommand:
         rv = await shell_complete(self, ctx_args, prog_name, complete_var, instruction)
         _fast_exit(rv)
 
-    def __call__(self, *args, _anyio_backend=None, **kwargs):
+    def __call__(
+        self, *args, _anyio_backend=None, _anyio_backend_options=None, **kwargs
+    ):
         """Alias for :meth:`main`."""
         main = self.main
         if _anyio_backend is None:
             import asyncclick
 
             _anyio_backend = asyncclick.anyio_backend
-        return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
+        return anyio.run(
+            self._main,
+            main,
+            args,
+            kwargs,
+            backend=_anyio_backend,
+            backend_options=_anyio_backend_options,
+        )
 
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)

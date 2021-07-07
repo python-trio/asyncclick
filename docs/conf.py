@@ -1,8 +1,7 @@
 import asyncclick as click
+import asyncclick._compat
 from pallets_sphinx_themes import get_version
 from pallets_sphinx_themes import ProjectLink
-
-import asyncclick._compat
 
 # compat until pallets-sphinx-themes is updated
 click._compat.text_type = str
@@ -55,4 +54,6 @@ html_show_sourcelink = False
 
 # LaTeX ----------------------------------------------------------------
 
-latex_documents = [(master_doc, f"AsyncClick-{version}.tex", html_title, author, "manual")]
+latex_documents = [
+    (master_doc, f"AsyncClick-{version}.tex", html_title, author, "manual")
+]
