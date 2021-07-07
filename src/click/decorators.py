@@ -9,7 +9,7 @@ from .globals import get_current_context
 from .utils import echo
 
 
-def async_backend(backend):
+def async_backend(backend, backend_options=None):
     """Selects the `anyio` backend to use.
 
     Valid choices are ``trio`` any ``asyncio``. The default is ``truo``.
@@ -22,6 +22,8 @@ def async_backend(backend):
         def new_func(*args, **kwargs):
             if "_anyio_backend" not in kwargs:
                 kwargs["_anyio_backend"] = backend
+            if "_anyio_backend_options" not in kwargs:
+                kwargs["_anyio_backend_options"] = backend_options
             return f(*args, **kwargs)
 
         return update_wrapper(new_func, f)
