@@ -1,3 +1,9 @@
+asyncclick (1:8.0.3-2) unstable; urgency=medium
+
+  * Fixed PYTHONPATH for tests
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:42:14 +0100
+
 asyncclick (1:8.0.3-1) unstable; urgency=medium
 
   * Merge 8.0.3

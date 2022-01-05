@@ -1,7 +1,7 @@
 API
 ===
 
-.. module:: click
+.. module:: asyncclick
 
 This part of the documentation lists the full API reference of all public
 classes and functions.
@@ -31,7 +31,7 @@ Decorators
 
 .. autofunction:: make_pass_decorator
 
-.. autofunction:: click.decorators.pass_meta_key
+.. autofunction:: asyncclick.decorators.pass_meta_key
 
 
 Utilities
@@ -111,7 +111,7 @@ Context
 
 .. autofunction:: get_current_context
 
-.. autoclass:: click.core.ParameterSource
+.. autoclass:: asyncclick.core.ParameterSource
     :members:
     :member-order: bysource
 
@@ -188,7 +188,7 @@ Shell Completion
 See :doc:`/shell-completion` for information about enabling and
 customizing Click's shell completion system.
 
-.. currentmodule:: click.shell_completion
+.. currentmodule:: asyncclick.shell_completion
 
 .. autoclass:: CompletionItem
 
@@ -202,7 +202,7 @@ customizing Click's shell completion system.
 Testing
 -------
 
-.. currentmodule:: click.testing
+.. currentmodule:: asyncclick.testing
 
 .. autoclass:: CliRunner
    :members:
