@@ -11,6 +11,3 @@ else
 	@exit 1
 endif
 
-pytest:
-	sudo tests/test.sh
-
