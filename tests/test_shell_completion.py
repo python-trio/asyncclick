@@ -280,12 +280,6 @@ def test_completion_item_data():
 
 @pytest.fixture()
 def _patch_for_completion(monkeypatch):
-<<<<<<< HEAD
-    monkeypatch.setattr("asyncclick.core._fast_exit", sys.exit)
-||||||| baea623
-    monkeypatch.setattr("click.core._fast_exit", sys.exit)
-=======
->>>>>>> 8.0.3
     monkeypatch.setattr(
         "asyncclick.shell_completion.BashComplete._check_version", lambda self: True
     )

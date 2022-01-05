@@ -1,3 +1,9 @@
+asyncclick (1:8.0.3-3) unstable; urgency=medium
+
+  * missed a comflict marker
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:43:07 +0100
+
 asyncclick (1:8.0.3-2) unstable; urgency=medium
 
   * Fixed PYTHONPATH for tests
