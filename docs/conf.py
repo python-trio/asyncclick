@@ -38,16 +38,16 @@ html_context = {
         ProjectLink("PyPI Releases", "https://pypi.org/project/click/"),
         ProjectLink("Source Code", "https://github.com/pallets/click/"),
         ProjectLink("Issue Tracker", "https://github.com/pallets/click/issues/"),
-        ProjectLink("Website", "https://palletsprojects.com/"),
+        ProjectLink("Website", "https://palletsprojects.com/p/click"),
         ProjectLink("Twitter", "https://twitter.com/PalletsTeam"),
         ProjectLink("Chat", "https://discord.gg/pallets"),
     ]
 }
 html_sidebars = {
-    "index": ["project.html", "localtoc.html", "searchbox.html"],
-    "**": ["localtoc.html", "relations.html", "searchbox.html"],
+    "index": ["project.html", "localtoc.html", "searchbox.html", "ethicalads.html"],
+    "**": ["localtoc.html", "relations.html", "searchbox.html", "ethicalads.html"],
 }
-singlehtml_sidebars = {"index": ["project.html", "localtoc.html"]}
+singlehtml_sidebars = {"index": ["project.html", "localtoc.html", "ethicalads.html"]}
 html_static_path = ["_static"]
 html_favicon = "_static/click-icon.png"
 html_logo = "_static/click-logo-sidebar.png"

@@ -1,5 +1,46 @@
 .. currentmodule:: click
 
+Version 8.0.3
+-------------
+
+Released 2021-10-10
+
+-   Fix issue with ``Path(resolve_path=True)`` type creating invalid
+    paths. :issue:`2088`
+-   Importing ``readline`` does not cause the ``confirm()`` prompt to
+    disappear when pressing backspace. :issue:`2092`
+-   Any default values injected by ``invoke()`` are cast to the
+    corresponding parameter's type. :issue:`2089, 2090`
+
+
+Version 8.0.2
+-------------
+
+Released 2021-10-08
+
+-   ``is_bool_flag`` is not set to ``True`` if ``is_flag`` is ``False``.
+    :issue:`1925`
+-   Bash version detection is locale independent. :issue:`1940`
+-   Empty ``default`` value is not shown for ``multiple=True``.
+    :issue:`1969`
+-   Fix shell completion for arguments that start with a forward slash
+    such as absolute file paths. :issue:`1929`
+-   ``Path`` type with ``resolve_path=True`` resolves relative symlinks
+    to be relative to the containing directory. :issue:`1921`
+-   Completion does not skip Python's resource cleanup when exiting,
+    avoiding some unexpected warning output. :issue:`1738, 2017`
+-   Fix type annotation for ``type`` argument in ``prompt`` function.
+    :issue:`2062`
+-   Fix overline and italic styles, which were incorrectly added when
+    adding underline. :pr:`2058`
+-   An option with ``count=True`` will not show "[x>=0]" in help text.
+    :issue:`2072`
+-   Default values are not cast to the parameter type twice during
+    processing. :issue:`2085`
+-   Options with ``multiple`` and ``flag_value`` use the flag value
+    instead of leaving an internal placeholder. :issue:`2001`
+
+
 Version 8.0.1
 -------------
 

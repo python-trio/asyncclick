@@ -1,6 +1,8 @@
+import os.path
 import pathlib
 
 import pytest
+from conftest import symlinks_supported
 
 import asyncclick as click
 
@@ -100,3 +102,29 @@ def test_path_type(runner, cls, expect):
     result = runner.invoke(cli, ["a/b/c.txt"], standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
+
+
+@pytest.mark.skipif(
+    not symlinks_supported, reason="The current OS or FS doesn't support symlinks."
+)
+def test_path_resolve_symlink(tmp_path, runner):
+    test_file = tmp_path / "file"
+    test_file_str = os.fsdecode(test_file)
+    test_file.write_text("")
+
+    path_type = click.Path(resolve_path=True)
+    param = click.Argument(["a"], type=path_type)
+    ctx = click.Context(click.Command("cli", params=[param]))
+
+    test_dir = tmp_path / "dir"
+    test_dir.mkdir()
+
+    abs_link = test_dir / "abs"
+    abs_link.symlink_to(test_file)
+    abs_rv = path_type.convert(os.fsdecode(abs_link), param, ctx)
+    assert abs_rv == test_file_str
+
+    rel_link = test_dir / "rel"
+    rel_link.symlink_to(pathlib.Path("..") / "file")
+    rel_rv = path_type.convert(os.fsdecode(rel_link), param, ctx)
+    assert rel_rv == test_file_str

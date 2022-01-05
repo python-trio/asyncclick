@@ -34,7 +34,7 @@ Install and update using `pip`_:
 
 AsyncClick supports Python 3.6 and newer, and PyPy3.
 
-.. _pip: https://pip.pypa.io/en/stable/quickstart/
+.. _pip: https://pip.pypa.io/en/stable/getting-started/
 
 A Simple Example
 ----------------

@@ -5,6 +5,7 @@ import asyncclick as click
 
 import pytest
 
+from asyncclick import Option
 
 def test_prefixes(runner):
     @click.command()
@@ -251,7 +252,7 @@ def test_multiple_default_composite_type():
     assert isinstance(opt.type, click.Tuple)
     assert opt.type.types == [click.INT, click.STRING]
     ctx = click.Context(click.Command("test"))
-    assert opt.get_default(ctx) == ((1, "a"),)
+    assert opt.type_cast_value(ctx, opt.get_default(ctx)) == ((1, "a"),)
 
 
 def test_parse_multiple_default_composite_type(runner):
@@ -313,11 +314,34 @@ def test_dynamic_default_help_text(runner):
         (click.IntRange(max=32), "x<=32"),
     ],
 )
-def test_intrange_default_help_text(runner, type, expect):
-    option = click.Option(["--count"], type=type, show_default=True, default=2)
+def test_intrange_default_help_text(type, expect):
+    option = click.Option(["--num"], type=type, show_default=True, default=2)
     context = click.Context(click.Command("test"))
     result = option.get_help_record(context)[1]
     assert expect in result
+
+
+def test_count_default_type_help():
+    """A count option with the default type should not show >=0 in help."""
+    option = click.Option(["--count"], count=True, help="some words")
+    context = click.Context(click.Command("test"))
+    result = option.get_help_record(context)[1]
+    assert result == "some words"
+
+
+def test_file_type_help_default():
+    """The default for a File type is a filename string. The string
+    should be displayed in help, not an open file object.
+
+    Type casting is only applied to defaults in processing, not when
+    getting the default value.
+    """
+    option = click.Option(
+        ["--in"], type=click.File(), default=__file__, show_default=True
+    )
+    context = click.Context(click.Command("test"))
+    result = option.get_help_record(context)[1]
+    assert __file__ in result
 
 
 def test_toupper_envvar_prefix(runner):
@@ -727,6 +751,16 @@ def test_do_not_show_no_default(runner):
     assert "[default: None]" not in message
 
 
+def test_do_not_show_default_empty_multiple():
+    """When show_default is True and multiple=True is set, it should not
+    print empty default value in --help output.
+    """
+    opt = click.Option(["-a"], multiple=True, help="values", show_default=True)
+    ctx = click.Context(click.Command("cli"))
+    message = opt.get_help_record(ctx)[1]
+    assert message == "values"
+
+
 @pytest.mark.parametrize(
     ("args", "expect"),
     [
@@ -758,8 +792,50 @@ def test_option_with_optional_value(runner, args, expect):
     assert result.return_value == expect
 
 
+def test_multiple_option_with_optional_value(runner):
+    cli = click.Command(
+        "cli",
+        params=[
+            click.Option(["-f"], is_flag=False, flag_value="flag", multiple=True),
+            click.Option(["-a"]),
+            click.Argument(["b"], nargs=-1),
+        ],
+        callback=lambda **kwargs: kwargs,
+    )
+    result = runner.invoke(
+        cli,
+        ["-f", "-f", "other", "-f", "-a", "1", "a", "b"],
+        standalone_mode=False,
+        catch_exceptions=False,
+    )
+    assert result.return_value == {
+        "f": ("flag", "other", "flag"),
+        "a": "1",
+        "b": ("a", "b"),
+    }
+
+
 def test_type_from_flag_value():
     param = click.Option(["-a", "x"], default=True, flag_value=4)
     assert param.type is click.INT
     param = click.Option(["-b", "x"], flag_value=8)
     assert param.type is click.INT
+
+
+@pytest.mark.parametrize(
+    ("option", "expected"),
+    [
+        # Not boolean flags
+        pytest.param(Option(["-a"], type=int), False, id="int option"),
+        pytest.param(Option(["-a"], type=bool), False, id="bool non-flag [None]"),
+        pytest.param(Option(["-a"], default=True), False, id="bool non-flag [True]"),
+        pytest.param(Option(["-a"], default=False), False, id="bool non-flag [False]"),
+        pytest.param(Option(["-a"], flag_value=1), False, id="non-bool flag_value"),
+        # Boolean flags
+        pytest.param(Option(["-a"], is_flag=True), True, id="is_flag=True"),
+        pytest.param(Option(["-a/-A"]), True, id="secondary option [implicit flag]"),
+        pytest.param(Option(["-a"], flag_value=True), True, id="bool flag_value"),
+    ],
+)
+def test_is_bool_flag_is_correctly_set(option, expected):
+    assert option.is_bool_flag is expected
