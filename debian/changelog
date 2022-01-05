@@ -1,3 +1,9 @@
+asyncclick (1:8.0.3-4) unstable; urgency=medium
+
+  * missed anyio markers
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:44:55 +0100
+
 asyncclick (1:8.0.3-3) unstable; urgency=medium
 
   * missed a comflict marker

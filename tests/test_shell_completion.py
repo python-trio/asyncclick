@@ -132,6 +132,7 @@ async def test_path_types(type, expect):
     assert c.type == expect
 
 
+@pytest.mark.anyio
 async def test_absolute_path():
     cli = Command("cli", params=[Option(["-f"], type=Path())])
     out = await _get_completions(cli, ["-f"], "/ab")
@@ -140,6 +141,7 @@ async def test_absolute_path():
     assert c.value == "/ab"
 
 
+@pytest.mark.anyio
 async def test_option_flag():
     cli = Command(
         "cli",
