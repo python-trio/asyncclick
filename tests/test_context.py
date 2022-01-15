@@ -218,7 +218,7 @@ async def test_async_context_mgr():
     ctx = click.Context(cli)
 
     async with ctx.scope():
-        rv = await ctx.enter_async_context(manager())
+        rv = await ctx.with_async_resource(manager())
         assert rv[0] == 1, rv
 
         # Internal
@@ -242,7 +242,7 @@ async def test_context_mgr():
     ctx = click.Context(cli)
 
     async with ctx.scope():
-        rv = ctx.enter_context(manager())
+        rv = ctx.with_resource(manager())
         assert rv[0] == 1, rv
 
         # Internal
