@@ -465,11 +465,11 @@ class Context:
             self.close()
         pop_context()
 
-    def enter_context(self, ctx):
+    def with_resource(self, ctx):
         """See :meth:contextlib.ExitStack.enter_context`."""
         return self._ctx_mgr.enter_context(ctx)
 
-    def enter_async_context(self, ctx):
+    def with_async_resource(self, ctx):
         """See :meth:contextlib.ExitStack.enter_async_context`."""
         return self._ctx_mgr.enter_async_context(ctx)
 
