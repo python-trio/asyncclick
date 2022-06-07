@@ -1146,10 +1146,15 @@ class BaseCommand:
         rv = await shell_complete(self, ctx_args, prog_name, complete_var, instruction)
         sys.exit(rv)
 
-    def __call__(self, *args: t.Any, _anyio_backend: str = None, **kwargs: t.Any) -> t.Any:
+    def __call__(self, *args: t.Any, _anyio_backend: str = None, _anyio_backend_options: dict = {}, **kwargs: t.Any) -> t.Any:
         """Alias for :meth:`main`."""
         main = self.main
-        return anyio.run(self._main, main, args, kwargs, **({"backend":_anyio_backend} if _anyio_backend is not None else {}))
+        opts = {}
+        if _anyio_backend:
+            opts["backend"] = _anyio_backend
+        if _anyio_backend_options:
+            opts["backend_options"] = _anyio_backend_options
+        return anyio.run(self._main, main, args, kwargs, **opts)
     
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)

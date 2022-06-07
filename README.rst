@@ -54,7 +54,7 @@ A Simple Example
             click.echo(f"Hello, {name}!")
 
     if __name__ == '__main__':
-        hello(_anyio_backend="trio")  # or asyncio, or curio
+        hello(_anyio_backend="trio")  # or asyncio
 
 .. note::
     AsyncClick automagically starts an anyio event loop and runs your
