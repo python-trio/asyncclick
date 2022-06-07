@@ -40,9 +40,9 @@ def test_context_invoke_type(runner):
 
     @click.command(cls=CustomCommand)
     @click.pass_context
-    def first(ctx):
+    async def first(ctx):
         assert isinstance(ctx, CustomContext)
-        ctx.invoke(second, first_id=id(ctx))
+        await ctx.invoke(second, first_id=id(ctx))
 
     assert not runner.invoke(first).exception
 

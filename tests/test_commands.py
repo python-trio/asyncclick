@@ -1,8 +1,10 @@
 import re
 from inspect import iscoroutine
 
-import asyncclick as click
 import pytest
+
+import asyncclick as click
+
 
 def test_other_command_invoke(runner):
     @click.command()
@@ -99,6 +101,20 @@ def test_auto_shorthelp(runner):
     )
 
 
+def test_help_truncation(runner):
+    @click.command()
+    def cli():
+        """This is a command with truncated help.
+        \f
+
+        This text should be truncated.
+        """
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "This is a command with truncated help." in result.output
+
+
 def test_no_args_is_help(runner):
     @click.command(no_args_is_help=True)
     def cli():
@@ -126,7 +142,16 @@ def test_default_maps(runner):
     assert result.output == "changed\n"
 
 
-def test_group_with_args(runner):
+@pytest.mark.parametrize(
+    ("args", "exit_code", "expect"),
+    [
+        (["obj1"], 2, "Error: Missing command."),
+        (["obj1", "--help"], 0, "Show this message and exit."),
+        (["obj1", "move"], 0, "obj=obj1\nmove\n"),
+        ([], 0, "Show this message and exit."),
+    ],
+)
+def test_group_with_args(runner, args, exit_code, expect):
     @click.group()
     @click.argument("obj")
     def cli(obj):
@@ -136,21 +161,9 @@ def test_group_with_args(runner):
     def move():
         click.echo("move")
 
-    result = runner.invoke(cli, [])
-    assert result.exit_code == 0
-    assert "Show this message and exit." in result.output
-
-    result = runner.invoke(cli, ["obj1"])
-    assert result.exit_code == 2
-    assert "Error: Missing command." in result.output
-
-    result = runner.invoke(cli, ["obj1", "--help"])
-    assert result.exit_code == 0
-    assert "Show this message and exit." in result.output
-
-    result = runner.invoke(cli, ["obj1", "move"])
-    assert result.exit_code == 0
-    assert result.output == "obj=obj1\nmove\n"
+    result = runner.invoke(cli, args)
+    assert result.exit_code == exit_code
+    assert expect in result.output
 
 
 def test_base_command(runner):
@@ -205,19 +218,13 @@ def test_base_command(runner):
 
     cli.add_command(OptParseCommand("test", parser, test_callback))
 
-    result = runner.invoke(
-        cli, ["test", "-f", "test.txt", "-q", "whatever.txt", "whateverelse.txt"]
-    )
-    if result.exception:
+    result = runner.invoke(cli, ["test", "-f", "f.txt", "-q", "q1.txt", "q2.txt"])
+    if result.exception is not None:
         raise result.exception
-    assert result.output.splitlines() == [
-        "whatever.txt whateverelse.txt",
-        "test.txt",
-        "False",
-    ]
+    assert result.output.splitlines() == ["q1.txt q2.txt", "f.txt", "False"]
 
     result = runner.invoke(cli, ["test", "--help"])
-    if result.exception:
+    if result.exception is not None:
         raise result.exception
     assert result.output.splitlines() == [
         "Usage: foo test [OPTIONS]",
@@ -343,20 +350,13 @@ def test_unprocessed_options(runner):
     ]
 
 
-def test_deprecated_in_help_messages(runner):
-    @click.command(deprecated=True)
-    def cmd_with_help():
-        """CLI HELP"""
+@pytest.mark.parametrize("doc", ["CLI HELP", None])
+def test_deprecated_in_help_messages(runner, doc):
+    @click.command(deprecated=True, help=doc)
+    def cli():
         pass
 
-    result = runner.invoke(cmd_with_help, ["--help"])
-    assert "(Deprecated)" in result.output
-
-    @click.command(deprecated=True)
-    def cmd_without_help():
-        pass
-
-    result = runner.invoke(cmd_without_help, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "(Deprecated)" in result.output
 
 
@@ -367,3 +367,64 @@ def test_deprecated_in_invocation(runner):
 
     result = runner.invoke(deprecated_cmd)
     assert "DeprecationWarning:" in result.output
+
+
+@pytest.mark.anyio
+async def test_command_parse_args_collects_option_prefixes():
+    @click.command()
+    @click.option("+p", is_flag=True)
+    @click.option("!e", is_flag=True)
+    def test(p, e):
+        pass
+
+    ctx = click.Context(test)
+    await test.parse_args(ctx, [])
+
+    assert ctx._opt_prefixes == {"-", "--", "+", "!"}
+
+
+@pytest.mark.anyio
+async def test_group_parse_args_collects_base_option_prefixes():
+    @click.group()
+    @click.option("~t", is_flag=True)
+    def group(t):
+        pass
+
+    @group.command()
+    @click.option("+p", is_flag=True)
+    def command1(p):
+        pass
+
+    @group.command()
+    @click.option("!e", is_flag=True)
+    def command2(e):
+        pass
+
+    ctx = click.Context(group)
+    await group.parse_args(ctx, ["command1", "+p"])
+
+    assert ctx._opt_prefixes == {"-", "--", "~"}
+
+
+def test_group_invoke_collects_used_option_prefixes(runner):
+    opt_prefixes = set()
+
+    @click.group()
+    @click.option("~t", is_flag=True)
+    def group(t):
+        pass
+
+    @group.command()
+    @click.option("+p", is_flag=True)
+    @click.pass_context
+    def command1(ctx, p):
+        nonlocal opt_prefixes
+        opt_prefixes = ctx._opt_prefixes
+
+    @group.command()
+    @click.option("!e", is_flag=True)
+    def command2(e):
+        pass
+
+    runner.invoke(group, ["command1"])
+    assert opt_prefixes == {"-", "--", "~", "+"}

@@ -118,6 +118,49 @@ async def test_type_choice():
     assert await _get_words(cli, ["-c"], "a2") == ["a2"]
 
 
+@pytest.mark.anyio
+async def test_choice_special_characters():
+    cli = Command("cli", params=[Option(["-c"], type=Choice(["!1", "!2", "+3"]))])
+    assert await _get_words(cli, ["-c"], "") == ["!1", "!2", "+3"]
+    assert await _get_words(cli, ["-c"], "!") == ["!1", "!2"]
+    assert await _get_words(cli, ["-c"], "!2") == ["!2"]
+
+
+@pytest.mark.anyio
+async def test_choice_conflicting_prefix():
+    cli = Command(
+        "cli",
+        params=[
+            Option(["-c"], type=Choice(["!1", "!2", "+3"])),
+            Option(["+p"], is_flag=True),
+        ],
+    )
+    assert await _get_words(cli, ["-c"], "") == ["!1", "!2", "+3"]
+    assert await _get_words(cli, ["-c"], "+") == ["+p"]
+
+
+@pytest.mark.anyio
+async def test_option_count():
+    cli = Command("cli", params=[Option(["-c"], count=True)])
+    assert await _get_words(cli, ["-c"], "") == []
+    assert await _get_words(cli, ["-c"], "-") == ["--help"]
+
+
+@pytest.mark.anyio
+async def test_option_optional():
+    cli = Command(
+        "cli",
+        add_help_option=False,
+        params=[
+            Option(["--name"], is_flag=False, flag_value="value"),
+            Option(["--flag"], is_flag=True),
+        ],
+    )
+    assert await _get_words(cli, ["--name"], "") == []
+    assert await _get_words(cli, ["--name"], "-") == ["--flag"]
+    assert await _get_words(cli, ["--name", "--flag"], "-") == []
+
+
 @pytest.mark.parametrize(
     ("type", "expect"),
     [(File(), "file"), (Path(), "file"), (Path(file_okay=False), "dir")],
@@ -171,21 +214,6 @@ async def test_option_custom():
     )
     assert await _get_words(cli, ["a", "b"], "") == [""]
     assert await _get_words(cli, ["a", "b"], "c") == ["C"]
-
-
-@pytest.mark.anyio
-async def test_autocompletion_deprecated():
-    # old function takes args and not param, returns all values, can mix
-    # strings and tuples
-    def custom(ctx, args, incomplete):
-        assert isinstance(args, list)
-        return [("art", "x"), "bat", "cat"]
-
-    with pytest.deprecated_call():
-        cli = Command("cli", params=[Argument(["x"], autocompletion=custom)])
-
-    assert await _get_words(cli, [], "") == ["art", "bat", "cat"]
-    assert await _get_words(cli, [], "c") == ["cat"]
 
 
 @pytest.mark.anyio

@@ -321,6 +321,22 @@ def test_open_file(runner):
         assert result.output == "foobar\nmeep\n"
 
 
+def test_open_file_pathlib_dash(runner):
+    @click.command()
+    @click.argument(
+        "filename", type=click.Path(allow_dash=True, path_type=pathlib.Path)
+    )
+    def cli(filename):
+        click.echo(str(type(filename)))
+
+        with click.open_file(filename) as f:
+            click.echo(f.read())
+
+        result = runner.invoke(cli, ["-"], input="value")
+        assert result.exception is None
+        assert result.output == "pathlib.Path\nvalue\n"
+
+
 def test_open_file_ignore_errors_stdin(runner):
     @click.command()
     @click.argument("filename")
@@ -429,20 +445,12 @@ class MockMain:
         ("example.py", None, "example.py"),
         (str(pathlib.Path("/foo/bar/example.py")), None, "example.py"),
         ("example", None, "example"),
-        (
-            str(pathlib.Path("example/__main__.py")),
-            MockMain(".example"),
-            "python -m example",
-        ),
-        (
-            str(pathlib.Path("example/cli.py")),
-            MockMain(".example"),
-            "python -m example.cli",
-        ),
+        (str(pathlib.Path("example/__main__.py")), "example", "python -m example"),
+        (str(pathlib.Path("example/cli.py")), "example", "python -m example.cli"),
     ],
 )
 def test_detect_program_name(path, main, expected):
-    assert click.utils._detect_program_name(path, _main=main) == expected
+    assert click.utils._detect_program_name(path, _main=MockMain(main)) == expected
 
 
 def test_expand_args(monkeypatch):
@@ -453,6 +461,8 @@ def test_expand_args(monkeypatch):
     assert "setup.cfg" in click.utils._expand_args(["*.cfg"])
     assert os.path.join("docs", "conf.py") in click.utils._expand_args(["**/conf.py"])
     assert "*.not-found" in click.utils._expand_args(["*.not-found"])
+    # a bad glob pattern, such as a pytest identifier, should return itself
+    assert click.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
 
 
 @pytest.mark.parametrize(
