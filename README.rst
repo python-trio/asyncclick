@@ -4,8 +4,7 @@ asyncclick
 What's AsyncClick?
 ------------------
 
-AsyncClick ist a fork of Click that works well with trio, asyncio, or
-curio.
+AsyncClick ist a fork of Click that works well with trio or asyncio.
 
 Click is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary. It's the "Command
@@ -32,7 +31,7 @@ Install and update using `pip`_:
 
     $ pip install asyncclick
 
-AsyncClick supports Python 3.6 and newer, and PyPy3.
+AsyncClick supports Python 3.7 and newer, and PyPy3.
 
 .. _pip: https://pip.pypa.io/en/stable/getting-started/
 
@@ -43,22 +42,32 @@ A Simple Example
 
     import anyio
     import asyncclick as click
+    # You can use all of click's features as per its documentation.
+    # Async commands are supported seamlessly; they just work.
     
     @click.command()
     @click.option("--count", default=1, help="Number of greetings.")
     @click.option("--name", prompt="Your name", help="The person to greet.")
     async def hello(count, name):
         """Simple program that greets NAME for a total of COUNT times."""
-        for _ in range(count):
+        for x in range(count):
             if x: await anyio.sleep(0.1)
             click.echo(f"Hello, {name}!")
 
     if __name__ == '__main__':
         hello(_anyio_backend="trio")  # or asyncio
 
+    # You can use your own event loop:
+    #    import anyio
+    #    async def main():
+    #        await hello.main()
+    #    if __name__ == '__main__':
+    #        anyio.run(main)
+    # This is useful for testing.
+
 .. note::
     AsyncClick automagically starts an anyio event loop and runs your
-    code asynchronously.
+    code asynchronously. You don't need to use `anyio.run`.
 
 .. code-block:: text
 
