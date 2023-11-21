@@ -72,8 +72,8 @@ def make_pass_decorator(
                    remembered on the context if it's not there yet.
     """
 
-    def decorator(f: "t.Callable[te.Concatenate[T, P], R]") -> "t.Callable[P, R]":
-        def new_func(*args: "P.args", **kwargs: "P.kwargs") -> "R":
+    def decorator(f: "t.Callable[te.Concatenate[T, P], R]") -> "t.Callable[P, t.Coroutine[t.Any, t.Any, R]]":
+        def new_func(*args: "P.args", **kwargs: "P.kwargs") -> "t.Coroutine[t.Any, t.Any, R]":
             ctx = get_current_context()
 
             obj: t.Optional[T]
@@ -111,8 +111,8 @@ def pass_meta_key(
     .. versionadded:: 8.0
     """
 
-    def decorator(f: "t.Callable[te.Concatenate[t.Any, P], R]") -> "t.Callable[P, R]":
-        def new_func(*args: "P.args", **kwargs: "P.kwargs") -> R:
+    def decorator(f: "t.Callable[te.Concatenate[t.Any, P], R]") -> "t.Callable[P, t.Coroutine[t.Any, t.Any, R]]":
+        def new_func(*args: "P.args", **kwargs: "P.kwargs") -> "t.Coroutine[t.Any, t.Any, R]":
             ctx = get_current_context()
             obj = ctx.meta[key]
             return ctx.invoke(f, obj, *args, **kwargs)

@@ -16,7 +16,6 @@ from ._compat import _find_binary_reader
 if t.TYPE_CHECKING:
     from .core import BaseCommand
 
-
 class EchoingStdin:
     def __init__(self, input: t.BinaryIO, output: t.BinaryIO) -> None:
         self._input = input
@@ -233,12 +232,10 @@ class CliRunner:
         bytes_input = make_input_stream(input, self.charset)
         echo_input = None
 
+        global o_stdin, o_stdout, o_stderr
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
-        sys.old_stdin = sys.stdin
-        sys.old_stdout = sys.stdout
-        sys.old_stderr = sys.stderr
         old_forced_width = formatting.FORCED_WIDTH
         formatting.FORCED_WIDTH = 80
 
@@ -340,12 +337,10 @@ class CliRunner:
                         pass
                 else:
                     os.environ[key] = value
-            sys.stdout = sys.old_stdout
-            sys.stderr = sys.old_stderr
-            sys.stdin = sys.old_stdin
-            sys.old_stdout = old_stdout
-            sys.old_stderr = old_stderr
-            sys.old_stdin = old_stdin
+            global o_stdin, o_stdout, o_stderr
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            sys.stdin = old_stdin
             termui.visible_prompt_func = old_visible_prompt_func
             termui.hidden_prompt_func = old_hidden_prompt_func
             termui._getchar = old__getchar_func
