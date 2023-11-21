@@ -107,6 +107,4 @@ These links point to the original, non-async-enabled, version of ``Click``.
 -   PyPI Releases: https://pypi.org/project/click/
 -   Source Code: https://github.com/pallets/click
 -   Issue Tracker: https://github.com/pallets/click/issues
--   Website: https://palletsprojects.com/p/click
--   Twitter: https://twitter.com/PalletsTeam
 -   Chat: https://discord.gg/pallets
