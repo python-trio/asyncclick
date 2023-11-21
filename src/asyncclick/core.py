@@ -739,7 +739,7 @@ class Context:
         ...
 
     @t.overload
-    def invoke(
+    async def invoke(
         __self,  # noqa: B902
         __callback: "Command",
         *args: t.Any,
@@ -747,7 +747,7 @@ class Context:
     ) -> t.Any:
         ...
 
-    def invoke(
+    async def invoke(
         __self,  # noqa: B902
         __callback: t.Union["Command", "t.Callable[..., V]"],
         *args: t.Any,

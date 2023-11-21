@@ -1,5 +1,6 @@
 import pytest
 
+import asyncclick as click
 import asyncclick.shell_completion
 from asyncclick.core import Argument
 from asyncclick.core import Command
