@@ -4,7 +4,7 @@ asyncclick
 What's AsyncClick?
 ------------------
 
-AsyncClick ist a fork of Click that works well with trio or asyncio.
+AsyncClick is a fork of Click that works well with trio or asyncio.
 
 Click is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary. It's the "Command
