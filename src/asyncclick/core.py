@@ -624,7 +624,7 @@ class Context:
 
         :param f: The function to execute on teardown.
         """
-        return self._ctx_mgr.callback(f)
+        return self._exit_stack.callback(f)
 
     def close(self) -> None:
         """Invoke all close callbacks registered with
