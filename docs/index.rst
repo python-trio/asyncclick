@@ -7,7 +7,7 @@ Welcome to the AsyncClick Documentation
     :scale: 50%
     :target: https://palletsprojects.com/p/click/
 
-AsyncClick ist a fork of Click that works well with (some) async
+AsyncClick is a fork of Click that works well with (some) async
 frameworks. Supported: asyncio, trio, and curio.
 
 Click, in turn, is a Python package for creating beautiful command line interfaces
