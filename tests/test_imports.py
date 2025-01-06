@@ -4,7 +4,6 @@ import sys
 
 from asyncclick._compat import WIN
 
-
 IMPORT_TEST = b"""\
 import builtins
 
@@ -49,6 +48,7 @@ ALLOWED_IMPORTS = {
     "typing",
     "types",
     "gettext",
+    "shutil",
 }
 
 if WIN:
