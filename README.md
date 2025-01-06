@@ -57,3 +57,7 @@ allow the maintainers to devote more time to the projects, [please
 donate today][].
 
 [please donate today]: https://palletsprojects.com/donate
+
+The AsyncClick fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
+It's not a lot of work, so if you'd like to motivate me, donate to the
+charity of your choice and tell me that you've done so. ;-)
