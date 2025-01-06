@@ -442,7 +442,7 @@ class Context:
         self._close_callbacks: t.List[t.Callable[[], t.Any]] = []
         self._depth = 0
         self._parameter_source: t.Dict[str, ParameterSource] = {}
-        self._exit_stack = ExitStack()
+        self._exit_stack = AsyncExitStack()
 
     async def to_info_dict(self) -> t.Dict[str, t.Any]:
         """Gather information that could be useful for a tool generating
@@ -482,7 +482,7 @@ class Context:
         self._depth -= 1
         if self._depth == 0:
             await t.cast(t.AsyncContextManager[t.Any], self._async_mgr).__aexit__(exc_type, exc_value, tb)
-            self.close()
+            await self.aclose()
         pop_context()
 
     @asynccontextmanager
@@ -635,14 +635,26 @@ class Context:
         """
         return self._exit_stack.callback(f)
 
-    def close(self) -> None:
+    def call_on_async_close(self, f: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
+        """Register a function to be called when the context tears down.
+
+        This can be used to close resources opened during the script
+        execution. Resources that support Python's context manager
+        protocol which would be used in a ``with`` statement should be
+        registered with :meth:`with_resource` instead.
+
+        :param f: The function to execute on teardown.
+        """
+        return self._exit_stack.push_async_callback(f)
+
+    async def aclose(self) -> None:
         """Invoke all close callbacks registered with
         :meth:`call_on_close`, and exit all context managers entered
         with :meth:`with_resource`.
         """
-        self._exit_stack.close()
+        await self._exit_stack.aclose()
         # In case the context is reused, create a new exit stack.
-        self._exit_stack = ExitStack()
+        self._exit_stack = AsyncExitStack()
 
     @property
     def command_path(self) -> str:
