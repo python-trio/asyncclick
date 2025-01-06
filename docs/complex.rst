@@ -249,7 +249,7 @@ stores a mapping from subcommand names to the information for importing them.
 
     # in lazy_group.py
     import importlib
-    import click
+    import asyncclick as click
 
     class LazyGroup(click.Group):
         def __init__(self, *args, lazy_subcommands=None, **kwargs):
@@ -295,7 +295,7 @@ subcommands like so:
 .. code-block:: python
 
     # in main.py
-    import click
+    import asyncclick as click
     from lazy_group import LazyGroup
 
     @click.group(
@@ -307,14 +307,14 @@ subcommands like so:
         pass
 
     # in foo.py
-    import click
+    import asyncclick as click
 
     @click.group(help="foo command for lazy example")
     def cli():
         pass
 
     # in bar.py
-    import click
+    import asyncclick as click
     from lazy_group import LazyGroup
 
     @click.group(
@@ -326,7 +326,7 @@ subcommands like so:
         pass
 
     # in baz.py
-    import click
+    import asyncclick as click
 
     @click.group(help="baz command for lazy example")
     def cli():

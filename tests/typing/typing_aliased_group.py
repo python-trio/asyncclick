@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing_extensions import assert_type
 
-import click
+import asyncclick as click
 
 
 class AliasedGroup(click.Group):
