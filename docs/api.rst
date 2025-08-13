@@ -1,10 +1,14 @@
 API
 ===
 
-.. module:: click
+.. module:: asyncclick
 
 This part of the documentation lists the full API reference of all public
 classes and functions.
+
+.. contents::
+   :depth: 1
+   :local:
 
 Decorators
 ----------
@@ -30,6 +34,9 @@ Decorators
 .. autofunction:: pass_obj
 
 .. autofunction:: make_pass_decorator
+
+.. autofunction:: click.decorators.pass_meta_key
+
 
 Utilities
 ---------
@@ -59,8 +66,6 @@ Utilities
 .. autofunction:: getchar
 
 .. autofunction:: pause
-
-.. autofunction:: get_terminal_size
 
 .. autofunction:: get_binary_stream
 
@@ -108,10 +113,11 @@ Context
 
 .. autofunction:: get_current_context
 
-.. autoclass:: click.core.ParameterSource
+.. autoclass:: asyncclick.core.ParameterSource
     :members:
     :member-order: bysource
 
+.. _click-api-types:
 
 Types
 -----
@@ -133,10 +139,13 @@ Types
 .. autoclass:: Path
 
 .. autoclass:: Choice
+   :members:
 
 .. autoclass:: IntRange
 
 .. autoclass:: FloatRange
+
+.. autoclass:: DateTime
 
 .. autoclass:: Tuple
 
@@ -193,6 +202,8 @@ customizing Click's shell completion system.
 
 .. autofunction:: add_completion_class
 
+
+.. _testing:
 
 Testing
 -------

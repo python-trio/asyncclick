@@ -1,15 +1,28 @@
+from __future__ import annotations
+
+import collections.abc as cabc
 import os
 import re
+import typing as t
+from gettext import gettext as _
 
 from .core import Argument
-from .core import MultiCommand
+from .core import Command
+from .core import Context
+from .core import Group
 from .core import Option
+from .core import Parameter
 from .core import ParameterSource
-from .parser import split_arg_string
 from .utils import echo
 
 
-async def shell_complete(cli, ctx_args, prog_name, complete_var, instruction):
+async def shell_complete(
+    cli: Command,
+    ctx_args: cabc.MutableMapping[str, t.Any],
+    prog_name: str,
+    complete_var: str,
+    instruction: str,
+) -> int:
     """Perform shell completion for the given CLI program.
 
     :param cli: Command being called.
@@ -62,13 +75,19 @@ class CompletionItem:
 
     __slots__ = ("value", "type", "help", "_info")
 
-    def __init__(self, value, type="plain", help=None, **kwargs):
-        self.value = value
-        self.type = type
-        self.help = help
+    def __init__(
+        self,
+        value: t.Any,
+        type: str = "plain",
+        help: str | None = None,
+        **kwargs: t.Any,
+    ) -> None:
+        self.value: t.Any = value
+        self.type: str = type
+        self.help: str | None = help
         self._info = kwargs
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> t.Any:
         return self._info.get(name)
 
 
@@ -85,10 +104,10 @@ _SOURCE_BASH = """\
         IFS=',' read type value <<< "$completion"
 
         if [[ $type == 'dir' ]]; then
-            COMREPLY=()
+            COMPREPLY=()
             compopt -o dirnames
         elif [[ $type == 'file' ]]; then
-            COMREPLY=()
+            COMPREPLY=()
             compopt -o default
         elif [[ $type == 'plain' ]]; then
             COMPREPLY+=($value)
@@ -105,6 +124,12 @@ _SOURCE_BASH = """\
 %(complete_func)s_setup;
 """
 
+# See ZshComplete.format_completion below, and issue #2703, before
+# changing this script.
+#
+# (TL;DR: _describe is picky about the format, but this Zsh script snippet
+# is already widely deployed.  So freeze this script, and use clever-ish
+# handling of colons in ZshComplet.format_completion.)
 _SOURCE_ZSH = """\
 #compdef %(prog_name)s
 
@@ -140,17 +165,19 @@ _SOURCE_ZSH = """\
     fi
 }
 
-compdef %(complete_func)s %(prog_name)s;
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    # autoload from fpath, call function directly
+    %(complete_func)s "$@"
+else
+    # eval/source/. command, register function for later
+    compdef %(complete_func)s %(prog_name)s
+fi
 """
 
 _SOURCE_FISH = """\
 function %(complete_func)s;
-    set -l response;
-
-    for value in (env %(complete_var)s=fish_complete COMP_WORDS=(commandline -cp) \
+    set -l response (env %(complete_var)s=fish_complete COMP_WORDS=(commandline -cp) \
 COMP_CWORD=(commandline -t) %(prog_name)s);
-        set response $response $value;
-    end;
 
     for completion in $response;
         set -l metadata (string split "," $completion);
@@ -183,31 +210,38 @@ class ShellComplete:
     .. versionadded:: 8.0
     """
 
-    name = None
+    name: t.ClassVar[str]
     """Name to register the shell as with :func:`add_completion_class`.
     This is used in completion instructions (``{name}_source`` and
     ``{name}_complete``).
     """
-    source_template = None
+
+    source_template: t.ClassVar[str]
     """Completion script template formatted by :meth:`source`. This must
     be provided by subclasses.
     """
 
-    def __init__(self, cli, ctx_args, prog_name, complete_var):
+    def __init__(
+        self,
+        cli: Command,
+        ctx_args: cabc.MutableMapping[str, t.Any],
+        prog_name: str,
+        complete_var: str,
+    ) -> None:
         self.cli = cli
         self.ctx_args = ctx_args
         self.prog_name = prog_name
         self.complete_var = complete_var
 
     @property
-    def func_name(self):
+    def func_name(self) -> str:
         """The name of the shell function defined by the completion
         script.
         """
-        safe_name = re.sub(r"\W*", "", self.prog_name.replace("-", "_"), re.ASCII)
+        safe_name = re.sub(r"\W*", "", self.prog_name.replace("-", "_"), flags=re.ASCII)
         return f"_{safe_name}_completion"
 
-    def source_vars(self):
+    def source_vars(self) -> dict[str, t.Any]:
         """Vars for formatting :attr:`source_template`.
 
         By default this provides ``complete_func``, ``complete_var``,
@@ -219,7 +253,7 @@ class ShellComplete:
             "prog_name": self.prog_name,
         }
 
-    def source(self):
+    def source(self) -> str:
         """Produce the shell script that defines the completion
         function. By default this ``%``-style formats
         :attr:`source_template` with the dict returned by
@@ -227,14 +261,14 @@ class ShellComplete:
         """
         return self.source_template % self.source_vars()
 
-    def get_completion_args(self):
+    def get_completion_args(self) -> tuple[list[str], str]:
         """Use the env vars defined by the shell script to return a
         tuple of ``args, incomplete``. This must be implemented by
         subclasses.
         """
         raise NotImplementedError
 
-    async def get_completions(self, args, incomplete):
+    async def get_completions(self, args: list[str], incomplete: str) -> list[CompletionItem]:
         """Determine the context and last complete command or parameter
         from the complete args. Call that object's ``shell_complete``
         method to get the completions for the incomplete value.
@@ -243,14 +277,10 @@ class ShellComplete:
         :param incomplete: Value being completed. May be empty.
         """
         ctx = await _resolve_context(self.cli, self.ctx_args, self.prog_name, args)
-
-        if ctx is None:
-            return []
-
         obj, incomplete = _resolve_incomplete(ctx, args, incomplete)
         return obj.shell_complete(ctx, incomplete)
 
-    def format_completion(self, item):
+    def format_completion(self, item: CompletionItem) -> str:
         """Format a completion item into the form recognized by the
         shell script. This must be implemented by subclasses.
 
@@ -258,7 +288,7 @@ class ShellComplete:
         """
         raise NotImplementedError
 
-    async def complete(self):
+    async def complete(self) -> str:
         """Produce the completion data to send back to the shell.
 
         By default this calls :meth:`get_completion_args`, gets the
@@ -277,30 +307,44 @@ class BashComplete(ShellComplete):
     name = "bash"
     source_template = _SOURCE_BASH
 
-    def _check_version(self):
+    @staticmethod
+    def _check_version() -> None:
+        import shutil
         import subprocess
 
-        output = subprocess.run(["bash", "--version"], stdout=subprocess.PIPE)
-        match = re.search(r"version (\d)\.(\d)\.\d", output.stdout.decode())
+        bash_exe = shutil.which("bash")
+
+        if bash_exe is None:
+            match = None
+        else:
+            output = subprocess.run(
+                [bash_exe, "--norc", "-c", 'echo "${BASH_VERSION}"'],
+                stdout=subprocess.PIPE,
+            )
+            match = re.search(r"^(\d+)\.(\d+)\.\d+", output.stdout.decode())
 
         if match is not None:
             major, minor = match.groups()
 
             if major < "4" or major == "4" and minor < "4":
-                raise RuntimeError(
-                    "Shell completion is not supported for Bash"
-                    " versions older than 4.4."
+                echo(
+                    _(
+                        "Shell completion is not supported for Bash"
+                        " versions older than 4.4."
+                    ),
+                    err=True,
                 )
         else:
-            raise RuntimeError(
-                "Couldn't detect Bash version, shell completion is not supported."
+            echo(
+                _("Couldn't detect Bash version, shell completion is not supported."),
+                err=True,
             )
 
-    def source(self):
+    def source(self) -> str:
         self._check_version()
         return super().source()
 
-    def get_completion_args(self):
+    def get_completion_args(self) -> tuple[list[str], str]:
         cwords = split_arg_string(os.environ["COMP_WORDS"])
         cword = int(os.environ["COMP_CWORD"])
         args = cwords[1:cword]
@@ -312,7 +356,7 @@ class BashComplete(ShellComplete):
 
         return args, incomplete
 
-    def format_completion(self, item: CompletionItem):
+    def format_completion(self, item: CompletionItem) -> str:
         return f"{item.type},{item.value}"
 
 
@@ -322,7 +366,7 @@ class ZshComplete(ShellComplete):
     name = "zsh"
     source_template = _SOURCE_ZSH
 
-    def get_completion_args(self):
+    def get_completion_args(self) -> tuple[list[str], str]:
         cwords = split_arg_string(os.environ["COMP_WORDS"])
         cword = int(os.environ["COMP_CWORD"])
         args = cwords[1:cword]
@@ -334,8 +378,22 @@ class ZshComplete(ShellComplete):
 
         return args, incomplete
 
-    def format_completion(self, item: CompletionItem):
-        return f"{item.type}\n{item.value}\n{item.help if item.help else '_'}"
+    def format_completion(self, item: CompletionItem) -> str:
+        help_ = item.help or "_"
+        # The zsh completion script uses `_describe` on items with help
+        # texts (which splits the item help from the item value at the
+        # first unescaped colon) and `compadd` on items without help
+        # text (which uses the item value as-is and does not support
+        # colon escaping).  So escape colons in the item value if and
+        # only if the item help is not the sentinel "_" value, as used
+        # by the completion script.
+        #
+        # (The zsh completion script is potentially widely deployed, and
+        # thus harder to fix than this method.)
+        #
+        # See issue #1812 and issue #2703 for further context.
+        value = item.value.replace(":", r"\:") if help_ != "_" else item.value
+        return f"{item.type}\n{value}\n{help_}"
 
 
 class FishComplete(ShellComplete):
@@ -344,7 +402,7 @@ class FishComplete(ShellComplete):
     name = "fish"
     source_template = _SOURCE_FISH
 
-    def get_completion_args(self):
+    def get_completion_args(self) -> tuple[list[str], str]:
         cwords = split_arg_string(os.environ["COMP_WORDS"])
         incomplete = os.environ["COMP_CWORD"]
         args = cwords[1:]
@@ -356,21 +414,26 @@ class FishComplete(ShellComplete):
 
         return args, incomplete
 
-    def format_completion(self, item: CompletionItem):
+    def format_completion(self, item: CompletionItem) -> str:
         if item.help:
             return f"{item.type},{item.value}\t{item.help}"
 
         return f"{item.type},{item.value}"
 
 
-_available_shells = {
+ShellCompleteType = t.TypeVar("ShellCompleteType", bound="type[ShellComplete]")
+
+
+_available_shells: dict[str, type[ShellComplete]] = {
     "bash": BashComplete,
     "fish": FishComplete,
     "zsh": ZshComplete,
 }
 
 
-def add_completion_class(cls, name=None):
+def add_completion_class(
+    cls: ShellCompleteType, name: str | None = None
+) -> ShellCompleteType:
     """Register a :class:`ShellComplete` subclass under the given name.
     The name will be provided by the completion instruction environment
     variable during completion.
@@ -385,8 +448,10 @@ def add_completion_class(cls, name=None):
 
     _available_shells[name] = cls
 
+    return cls
 
-def get_completion_class(shell):
+
+def get_completion_class(shell: str) -> type[ShellComplete] | None:
     """Look up a registered :class:`ShellComplete` subclass by the name
     provided by the completion instruction environment variable. If the
     name isn't registered, returns ``None``.
@@ -396,7 +461,44 @@ def get_completion_class(shell):
     return _available_shells.get(shell)
 
 
-def _is_incomplete_argument(ctx, param):
+def split_arg_string(string: str) -> list[str]:
+    """Split an argument string as with :func:`shlex.split`, but don't
+    fail if the string is incomplete. Ignores a missing closing quote or
+    incomplete escape sequence and uses the partial token as-is.
+
+    .. code-block:: python
+
+        split_arg_string("example 'my file")
+        ["example", "my file"]
+
+        split_arg_string("example my\\")
+        ["example", "my"]
+
+    :param string: String to split.
+
+    .. versionchanged:: 8.2
+        Moved to ``shell_completion`` from ``parser``.
+    """
+    import shlex
+
+    lex = shlex.shlex(string, posix=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    out = []
+
+    try:
+        for token in lex:
+            out.append(token)
+    except ValueError:
+        # Raised when end-of-string is reached in an invalid state. Use
+        # the partial token as-is. The quote or escape character is in
+        # lex.state, not lex.token.
+        out.append(lex.token)
+
+    return out
+
+
+def _is_incomplete_argument(ctx: Context, param: Parameter) -> bool:
     """Determine if the given parameter is an argument that can still
     accept values.
 
@@ -407,7 +509,9 @@ def _is_incomplete_argument(ctx, param):
     if not isinstance(param, Argument):
         return False
 
-    value = ctx.params[param.name]
+    assert param.name is not None
+    # Will be None if expose_value is False.
+    value = ctx.params.get(param.name)
     return (
         param.nargs == -1
         or ctx.get_parameter_source(param.name) is not ParameterSource.COMMANDLINE
@@ -419,12 +523,16 @@ def _is_incomplete_argument(ctx, param):
     )
 
 
-def _start_of_option(value):
+def _start_of_option(ctx: Context, value: str) -> bool:
     """Check if the value looks like the start of an option."""
-    return value and not value[0].isalnum()
+    if not value:
+        return False
+
+    c = value[0]
+    return c in ctx._opt_prefixes
 
 
-def _is_incomplete_option(args, param):
+def _is_incomplete_option(ctx: Context, args: list[str], param: Parameter) -> bool:
     """Determine if the given parameter is an option that needs a value.
 
     :param args: List of complete args before the incomplete value.
@@ -433,7 +541,7 @@ def _is_incomplete_option(args, param):
     if not isinstance(param, Option):
         return False
 
-    if param.is_flag:
+    if param.is_flag or param.count:
         return False
 
     last_option = None
@@ -442,13 +550,18 @@ def _is_incomplete_option(args, param):
         if index + 1 > param.nargs:
             break
 
-        if _start_of_option(arg):
+        if _start_of_option(ctx, arg):
             last_option = arg
 
     return last_option is not None and last_option in param.opts
 
 
-async def _resolve_context(cli, ctx_args, prog_name, args):
+async def _resolve_context(
+    cli: Command,
+    ctx_args: cabc.MutableMapping[str, t.Any],
+    prog_name: str,
+    args: list[str],
+) -> Context:
     """Produce the context hierarchy starting with the command and
     traversing the complete arguments. This only follows the commands,
     it doesn't trigger input prompts or callbacks.
@@ -458,47 +571,55 @@ async def _resolve_context(cli, ctx_args, prog_name, args):
     :param args: List of complete args before the incomplete value.
     """
     ctx_args["resilient_parsing"] = True
-    ctx = await cli.make_context(prog_name, args.copy(), **ctx_args)
-    args = ctx.protected_args + ctx.args
+    async with await cli.make_context(prog_name, args.copy(), **ctx_args) as ctx:
+        args = ctx._protected_args + ctx.args
 
-    while args:
-        if isinstance(ctx.command, MultiCommand):
-            if not ctx.command.chain:
-                name, cmd, args = await ctx.command.resolve_command(ctx, args)
+        while args:
+            command = ctx.command
 
-                if cmd is None:
-                    return ctx
-
-                ctx = await cmd.make_context(
-                    name, args, parent=ctx, resilient_parsing=True
-                )
-                args = ctx.protected_args + ctx.args
-            else:
-                while args:
-                    name, cmd, args = await ctx.command.resolve_command(ctx, args)
+            if isinstance(command, Group):
+                if not command.chain:
+                    name, cmd, args = await command.resolve_command(ctx, args)
 
                     if cmd is None:
                         return ctx
 
-                    sub_ctx = await cmd.make_context(
-                        name,
-                        args,
-                        parent=ctx,
-                        allow_extra_args=True,
-                        allow_interspersed_args=False,
-                        resilient_parsing=True,
-                    )
-                    args = sub_ctx.args
+                    async with await cmd.make_context(
+                        name, args, parent=ctx, resilient_parsing=True
+                    ) as sub_ctx:
+                        ctx = sub_ctx
+                        args = ctx._protected_args + ctx.args
+                else:
+                    sub_ctx = ctx
 
-                ctx = sub_ctx
-                args = sub_ctx.protected_args + sub_ctx.args
-        else:
-            break
+                    while args:
+                        name, cmd, args = await command.resolve_command(ctx, args)
+
+                        if cmd is None:
+                            return ctx
+
+                        async with await cmd.make_context(
+                            name,
+                            args,
+                            parent=ctx,
+                            allow_extra_args=True,
+                            allow_interspersed_args=False,
+                            resilient_parsing=True,
+                        ) as sub_sub_ctx:
+                            sub_ctx = sub_sub_ctx
+                            args = sub_ctx.args
+
+                    ctx = sub_ctx
+                    args = [*sub_ctx._protected_args, *sub_ctx.args]
+            else:
+                break
 
     return ctx
 
 
-def _resolve_incomplete(ctx, args, incomplete):
+def _resolve_incomplete(
+    ctx: Context, args: list[str], incomplete: str
+) -> tuple[Command | Parameter, str]:
     """Find the Click object that will handle the completion of the
     incomplete value. Return the object and the incomplete value.
 
@@ -513,7 +634,7 @@ def _resolve_incomplete(ctx, args, incomplete):
     # split and discard the "=" to make completion easier.
     if incomplete == "=":
         incomplete = ""
-    elif "=" in incomplete and _start_of_option(incomplete):
+    elif "=" in incomplete and _start_of_option(ctx, incomplete):
         name, _, incomplete = incomplete.partition("=")
         args.append(name)
 
@@ -521,7 +642,7 @@ def _resolve_incomplete(ctx, args, incomplete):
     # even if they start with the option character. If it hasn't been
     # given and the incomplete arg looks like an option, the current
     # command will provide option name completions.
-    if "--" not in args and _start_of_option(incomplete):
+    if "--" not in args and _start_of_option(ctx, incomplete):
         return ctx.command, incomplete
 
     params = ctx.command.get_params(ctx)
@@ -529,7 +650,7 @@ def _resolve_incomplete(ctx, args, incomplete):
     # If the last complete arg is an option name with an incomplete
     # value, the option will provide value completions.
     for param in params:
-        if _is_incomplete_option(args, param):
+        if _is_incomplete_option(ctx, args, param):
             return param, incomplete
 
     # It's not an option name or value. The first argument without a

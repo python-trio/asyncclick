@@ -1,7 +1,5 @@
 /.idea/
 /.vscode/
-/env/
-/venv/
 /.pybuild/
 .cache/
 __pycache__/
@@ -10,10 +8,11 @@ __pycache__/
 /build/
 /dist/
 /.pytest_cache/
-/.tox/
 .coverage
 .coverage.*
 htmlcov/
-/htmlcov/
 /docs/_build/
 /.eggs/
+.coverage*
+.tox/
+docs/_build/

@@ -4,7 +4,6 @@ import sys
 
 from asyncclick._compat import WIN
 
-
 IMPORT_TEST = b"""\
 import builtins
 
@@ -15,7 +14,7 @@ import sys
 def tracking_import(module, locals=None, globals=None, fromlist=None,
                     level=0):
     rv = real_import(module, locals, globals, fromlist, level)
-    if globals and globals['__name__'].startswith('click') and level == 0:
+    if globals and globals.get('__name__','').startswith('asyncclick') and level == 0:
         found_imports.add(module)
     return rv
 builtins.__import__ = tracking_import
@@ -27,29 +26,36 @@ click.echo(json.dumps(rv))
 """
 
 ALLOWED_IMPORTS = {
-    "weakref",
-    "os",
-    "struct",
-    "collections",
-    "sys",
-    "contextlib",
-    "functools",
-    "stat",
-    "re",
+    "__future__",
+    "anyio",
     "codecs",
-    "inspect",
-    "itertools",
-    "io",
-    "threading",
-    "colorama",
-    "errno",
-    "fcntl",
+    "collections",
+    "collections.abc",
+    "configparser",
+    "contextlib",
     "datetime",
     "enum",
+    "errno",
+    "fcntl",
+    "functools",
+    "gettext",
+    "inspect",
+    "io",
+    "itertools",
+    "os",
+    "re",
+    "shutil",
+    "stat",
+    "struct",
+    "sys",
+    "threading",
+    "types",
+    "typing",
+    "weakref",
 }
 
 if WIN:
-    ALLOWED_IMPORTS.update(["ctypes", "ctypes.wintypes", "msvcrt", "time", "zlib"])
+    ALLOWED_IMPORTS.update(["ctypes", "ctypes.wintypes", "msvcrt", "time"])
 
 
 def test_light_imports():

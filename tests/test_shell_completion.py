@@ -1,11 +1,16 @@
-import sys
+import textwrap
+import warnings
+from collections.abc import Mapping
+
+import pytest
 
 import asyncclick as click
-import pytest
+import asyncclick.shell_completion
 from asyncclick.core import Argument
 from asyncclick.core import Command
 from asyncclick.core import Group
 from asyncclick.core import Option
+from asyncclick.shell_completion import add_completion_class
 from asyncclick.shell_completion import CompletionItem
 from asyncclick.shell_completion import ShellComplete
 from asyncclick.types import Choice
@@ -38,6 +43,37 @@ async def test_group():
     cli = Group("cli", params=[Option(["-a"])], commands=[Command("x"), Command("y")])
     assert (await _get_words(cli, [], "")) == ["x", "y"]
     assert (await _get_words(cli, [], "-")) == ["-a", "--help"]
+
+
+@pytest.mark.parametrize(
+    ("args", "word", "expect"),
+    [
+        ([], "", ["get"]),
+        (["get"], "", ["full"]),
+        (["get", "full"], "", ["data"]),
+        (["get", "full"], "-", ["--verbose", "--help"]),
+        (["get", "full", "data"], "", []),
+        (["get", "full", "data"], "-", ["-a", "--help"]),
+    ],
+)
+@pytest.mark.anyio
+async def test_nested_group(args: list[str], word: str, expect: list[str]) -> None:
+    cli = Group(
+        "cli",
+        commands=[
+            Group(
+                "get",
+                commands=[
+                    Group(
+                        "full",
+                        params=[Option(["--verbose"])],
+                        commands=[Command("data", params=[Option(["-a"])])],
+                    )
+                ],
+            )
+        ],
+    )
+    assert (await _get_words(cli, args, word)) == expect
 
 
 @pytest.mark.anyio
@@ -120,6 +156,49 @@ async def test_type_choice():
     assert (await _get_words(cli, ["-c"], "a2")) == ["a2"]
 
 
+@pytest.mark.anyio
+async def test_choice_special_characters():
+    cli = Command("cli", params=[Option(["-c"], type=Choice(["!1", "!2", "+3"]))])
+    assert (await _get_words(cli, ["-c"], "")) == ["!1", "!2", "+3"]
+    assert (await _get_words(cli, ["-c"], "!")) == ["!1", "!2"]
+    assert (await _get_words(cli, ["-c"], "!2")) == ["!2"]
+
+
+@pytest.mark.anyio
+async def test_choice_conflicting_prefix():
+    cli = Command(
+        "cli",
+        params=[
+            Option(["-c"], type=Choice(["!1", "!2", "+3"])),
+            Option(["+p"], is_flag=True),
+        ],
+    )
+    assert (await _get_words(cli, ["-c"], "")) == ["!1", "!2", "+3"]
+    assert (await _get_words(cli, ["-c"], "+")) == ["+p"]
+
+
+@pytest.mark.anyio
+async def test_option_count():
+    cli = Command("cli", params=[Option(["-c"], count=True)])
+    assert (await _get_words(cli, ["-c"], "")) == []
+    assert (await _get_words(cli, ["-c"], "-")) == ["--help"]
+
+
+@pytest.mark.anyio
+async def test_option_optional():
+    cli = Command(
+        "cli",
+        add_help_option=False,
+        params=[
+            Option(["--name"], is_flag=False, flag_value="value"),
+            Option(["--flag"], is_flag=True),
+        ],
+    )
+    assert (await _get_words(cli, ["--name"], "")) == []
+    assert (await _get_words(cli, ["--name"], "-")) == ["--flag"]
+    assert (await _get_words(cli, ["--name", "--flag"], "-")) == []
+
+
 @pytest.mark.parametrize(
     ("type", "expect"),
     [(File(), "file"), (Path(), "file"), (Path(file_okay=False), "dir")],
@@ -132,6 +211,15 @@ async def test_path_types(type, expect):
     c = out[0]
     assert c.value == "ab"
     assert c.type == expect
+
+
+@pytest.mark.anyio
+async def test_absolute_path():
+    cli = Command("cli", params=[Option(["-f"], type=Path())])
+    out = await _get_completions(cli, ["-f"], "/ab")
+    assert len(out) == 1
+    c = out[0]
+    assert c.value == "/ab"
 
 
 @pytest.mark.anyio
@@ -164,21 +252,6 @@ async def test_option_custom():
     )
     assert (await _get_words(cli, ["a", "b"], "")) == [""]
     assert (await _get_words(cli, ["a", "b"], "c")) == ["C"]
-
-
-@pytest.mark.anyio
-async def test_autocompletion_deprecated():
-    # old function takes args and not param, returns all values, can mix
-    # strings and tuples
-    def custom(ctx, args, incomplete):
-        assert isinstance(args, list)
-        return [("art", "x"), "bat", "cat"]
-
-    with pytest.deprecated_call():
-        cli = Command("cli", params=[Argument(["x"], autocompletion=custom)])
-
-    assert (await _get_words(cli, [], "")) == ["art", "bat", "cat"]
-    assert (await _get_words(cli, [], "c")) == ["cat"]
 
 
 @pytest.mark.anyio
@@ -275,19 +348,17 @@ def test_completion_item_data():
 
 @pytest.fixture()
 def _patch_for_completion(monkeypatch):
-    monkeypatch.setattr("asyncclick.core._fast_exit", sys.exit)
     monkeypatch.setattr(
         "asyncclick.shell_completion.BashComplete._check_version", lambda self: True
     )
 
 
-@pytest.mark.parametrize(
-    "shell", ["bash", "zsh", "fish"],
-)
+@pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
 @pytest.mark.usefixtures("_patch_for_completion")
-def test_full_source(runner, shell):
+@pytest.mark.anyio
+async def test_full_source(runner, shell):
     cli = Group("cli", commands=[Command("a"), Command("b")])
-    result = runner.invoke(cli, env={"_CLI_COMPLETE": f"{shell}_source"})
+    result = await runner.invoke(cli, env={"_CLI_COMPLETE": f"{shell}_source"})
     assert f"_CLI_COMPLETE={shell}_complete" in result.output
 
 
@@ -303,20 +374,96 @@ def test_full_source(runner, shell):
     ],
 )
 @pytest.mark.usefixtures("_patch_for_completion")
-def test_full_complete(runner, shell, env, expect):
+@pytest.mark.anyio
+async def test_full_complete(runner, shell, env, expect):
     cli = Group("cli", commands=[Command("a"), Command("b", help="bee")])
     env["_CLI_COMPLETE"] = f"{shell}_complete"
-    result = runner.invoke(cli, env=env)
+    result = await runner.invoke(cli, env=env)
+    assert result.output == expect
+
+
+@pytest.mark.parametrize(
+    ("env", "expect"),
+    [
+        (
+            {"COMP_WORDS": "", "COMP_CWORD": "0"},
+            textwrap.dedent(
+                """\
+                    plain
+                    a
+                    _
+                    plain
+                    b
+                    bee
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+        (
+            {"COMP_WORDS": "a c", "COMP_CWORD": "1"},
+            textwrap.dedent(
+                """\
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+        (
+            {"COMP_WORDS": "a c:", "COMP_CWORD": "1"},
+            textwrap.dedent(
+                """\
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+    ],
+)
+@pytest.mark.usefixtures("_patch_for_completion")
+@pytest.mark.anyio
+async def test_zsh_full_complete_with_colons(
+    runner, env: Mapping[str, str], expect: str
+) -> None:
+    cli = Group(
+        "cli",
+        commands=[
+            Command("a"),
+            Command("b", help="bee"),
+            Command("c:d", help="cee:dee"),
+            Command("c:e"),
+        ],
+    )
+    result = await runner.invoke(
+        cli,
+        env={
+            **env,
+            "_CLI_COMPLETE": "zsh_complete",
+        },
+    )
     assert result.output == expect
 
 
 @pytest.mark.usefixtures("_patch_for_completion")
-def test_context_settings(runner):
+@pytest.mark.anyio
+async def test_context_settings(runner):
     def complete(ctx, param, incomplete):
         return ctx.obj["choices"]
 
     cli = Command("cli", params=[Argument("x", shell_complete=complete)])
-    result = runner.invoke(
+    result = await runner.invoke(
         cli,
         obj={"choices": ["a", "b"]},
         env={"COMP_WORDS": "", "COMP_CWORD": "0", "_CLI_COMPLETE": "bash_complete"},
@@ -333,3 +480,98 @@ async def test_choice_case_sensitive(value, expect):
     )
     completions = await _get_words(cli, ["-a"], "a")
     assert completions == expect
+
+
+@pytest.fixture()
+def _restore_available_shells(tmpdir):
+    prev_available_shells = click.shell_completion._available_shells.copy()
+    click.shell_completion._available_shells.clear()
+    yield
+    click.shell_completion._available_shells.clear()
+    click.shell_completion._available_shells.update(prev_available_shells)
+
+
+@pytest.mark.usefixtures("_restore_available_shells")
+def test_add_completion_class():
+    # At first, "mysh" is not in available shells
+    assert "mysh" not in click.shell_completion._available_shells
+
+    class MyshComplete(ShellComplete):
+        name = "mysh"
+        source_template = "dummy source"
+
+    # "mysh" still not in available shells because it is not registered
+    assert "mysh" not in click.shell_completion._available_shells
+
+    # Adding a completion class should return that class
+    assert add_completion_class(MyshComplete) is MyshComplete
+
+    # Now, "mysh" is finally in available shells
+    assert "mysh" in click.shell_completion._available_shells
+    assert click.shell_completion._available_shells["mysh"] is MyshComplete
+
+
+@pytest.mark.usefixtures("_restore_available_shells")
+def test_add_completion_class_with_name():
+    # At first, "mysh" is not in available shells
+    assert "mysh" not in click.shell_completion._available_shells
+    assert "not_mysh" not in click.shell_completion._available_shells
+
+    class MyshComplete(ShellComplete):
+        name = "not_mysh"
+        source_template = "dummy source"
+
+    # "mysh" and "not_mysh" are still not in available shells because
+    # it is not registered yet
+    assert "mysh" not in click.shell_completion._available_shells
+    assert "not_mysh" not in click.shell_completion._available_shells
+
+    # Adding a completion class should return that class.
+    # Because we are using the "name" parameter, the name isn't taken
+    # from the class.
+    assert add_completion_class(MyshComplete, name="mysh") is MyshComplete
+
+    # Now, "mysh" is finally in available shells
+    assert "mysh" in click.shell_completion._available_shells
+    assert "not_mysh" not in click.shell_completion._available_shells
+    assert click.shell_completion._available_shells["mysh"] is MyshComplete
+
+
+@pytest.mark.usefixtures("_restore_available_shells")
+def test_add_completion_class_decorator():
+    # At first, "mysh" is not in available shells
+    assert "mysh" not in click.shell_completion._available_shells
+
+    @add_completion_class
+    class MyshComplete(ShellComplete):
+        name = "mysh"
+        source_template = "dummy source"
+
+    # Using `add_completion_class` as a decorator adds the new shell immediately
+    assert "mysh" in click.shell_completion._available_shells
+    assert click.shell_completion._available_shells["mysh"] is MyshComplete
+
+
+# Don't make the ResourceWarning give an error
+@pytest.mark.filterwarnings("default")
+@pytest.mark.anyio
+async def test_files_closed(runner) -> None:
+    with runner.isolated_filesystem():
+        config_file = "foo.txt"
+        with open(config_file, "w") as f:
+            f.write("bar")
+
+        @click.group()
+        @click.option(
+            "--config-file",
+            default=config_file,
+            type=click.File(mode="r"),
+        )
+        @click.pass_context
+        def cli(ctx, config_file):
+            pass
+
+        with warnings.catch_warnings(record=True) as current_warnings:
+            assert not current_warnings, "There should be no warnings to start"
+            await _get_completions(cli, args=[], incomplete="")
+            assert not current_warnings, "There should be no warnings after either"

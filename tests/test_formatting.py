@@ -1,7 +1,10 @@
+import pytest
+
 import asyncclick as click
 
 
-def test_basic_functionality(runner):
+@pytest.mark.anyio
+async def test_basic_functionality(runner):
     @click.command()
     def cli():
         """First paragraph.
@@ -24,7 +27,7 @@ def test_basic_functionality(runner):
         that will be rewrapped again.
         """
 
-    result = runner.invoke(cli, ["--help"], terminal_width=60)
+    result = await runner.invoke(cli, ["--help"], terminal_width=60)
     assert not result.exception
     assert result.output.splitlines() == [
         "Usage: cli [OPTIONS]",
@@ -49,16 +52,15 @@ def test_basic_functionality(runner):
     ]
 
 
-def test_wrapping_long_options_strings(runner):
+@pytest.mark.anyio
+async def test_wrapping_long_options_strings(runner):
     @click.group()
     def cli():
-        """Top level command
-        """
+        """Top level command"""
 
     @cli.group()
     def a_very_long():
-        """Second level
-        """
+        """Second level"""
 
     @a_very_long.command()
     @click.argument("first")
@@ -68,12 +70,11 @@ def test_wrapping_long_options_strings(runner):
     @click.argument("fifth")
     @click.argument("sixth")
     def command():
-        """A command.
-        """
+        """A command."""
 
     # 54 is chosen as a length where the second line is one character
     # longer than the maximum length.
-    result = runner.invoke(cli, ["a-very-long", "command", "--help"], terminal_width=54)
+    result = await runner.invoke(cli, ["a-very-long", "command", "--help"], terminal_width=54)
     assert not result.exception
     assert result.output.splitlines() == [
         "Usage: cli a-very-long command [OPTIONS] FIRST SECOND",
@@ -87,16 +88,15 @@ def test_wrapping_long_options_strings(runner):
     ]
 
 
-def test_wrapping_long_command_name(runner):
+@pytest.mark.anyio
+async def test_wrapping_long_command_name(runner):
     @click.group()
     def cli():
-        """Top level command
-        """
+        """Top level command"""
 
     @cli.group()
     def a_very_very_very_long():
-        """Second level
-        """
+        """Second level"""
 
     @a_very_very_very_long.command()
     @click.argument("first")
@@ -106,10 +106,9 @@ def test_wrapping_long_command_name(runner):
     @click.argument("fifth")
     @click.argument("sixth")
     def command():
-        """A command.
-        """
+        """A command."""
 
-    result = runner.invoke(
+    result = await runner.invoke(
         cli, ["a-very-very-very-long", "command", "--help"], terminal_width=54
     )
     assert not result.exception
@@ -125,14 +124,17 @@ def test_wrapping_long_command_name(runner):
     ]
 
 
-def test_formatting_empty_help_lines(runner):
+@pytest.mark.anyio
+async def test_formatting_empty_help_lines(runner):
     @click.command()
     def cli():
+        # fmt: off
         """Top level command
 
         """
+        # fmt: on
 
-    result = runner.invoke(cli, ["--help"])
+    result = await runner.invoke(cli, ["--help"])
     assert not result.exception
     assert result.output.splitlines() == [
         "Usage: cli [OPTIONS]",
@@ -146,13 +148,14 @@ def test_formatting_empty_help_lines(runner):
     ]
 
 
-def test_formatting_usage_error(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_error(runner):
     @click.command()
     @click.argument("arg")
     def cmd(arg):
         click.echo(f"arg:{arg}")
 
-    result = runner.invoke(cmd, [])
+    result = await runner.invoke(cmd, [])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd [OPTIONS] ARG",
@@ -162,7 +165,8 @@ def test_formatting_usage_error(runner):
     ]
 
 
-def test_formatting_usage_error_metavar_missing_arg(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_error_metavar_missing_arg(runner):
     """
     :author: @r-m-n
     Including attribution to #612
@@ -173,7 +177,7 @@ def test_formatting_usage_error_metavar_missing_arg(runner):
     def cmd(arg):
         pass
 
-    result = runner.invoke(cmd, [])
+    result = await runner.invoke(cmd, [])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd [OPTIONS] metavar",
@@ -183,13 +187,14 @@ def test_formatting_usage_error_metavar_missing_arg(runner):
     ]
 
 
-def test_formatting_usage_error_metavar_bad_arg(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_error_metavar_bad_arg(runner):
     @click.command()
     @click.argument("arg", type=click.INT, metavar="metavar")
     def cmd(arg):
         pass
 
-    result = runner.invoke(cmd, ["3.14"])
+    result = await runner.invoke(cmd, ["3.14"])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd [OPTIONS] metavar",
@@ -199,7 +204,8 @@ def test_formatting_usage_error_metavar_bad_arg(runner):
     ]
 
 
-def test_formatting_usage_error_nested(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_error_nested(runner):
     @click.group()
     def cmd():
         pass
@@ -209,7 +215,7 @@ def test_formatting_usage_error_nested(runner):
     def foo(bar):
         click.echo(f"foo:{bar}")
 
-    result = runner.invoke(cmd, ["foo"])
+    result = await runner.invoke(cmd, ["foo"])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd foo [OPTIONS] BAR",
@@ -219,13 +225,14 @@ def test_formatting_usage_error_nested(runner):
     ]
 
 
-def test_formatting_usage_error_no_help(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_error_no_help(runner):
     @click.command(add_help_option=False)
     @click.argument("arg")
     def cmd(arg):
         click.echo(f"arg:{arg}")
 
-    result = runner.invoke(cmd, [])
+    result = await runner.invoke(cmd, [])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd [OPTIONS] ARG",
@@ -234,13 +241,14 @@ def test_formatting_usage_error_no_help(runner):
     ]
 
 
-def test_formatting_usage_custom_help(runner):
+@pytest.mark.anyio
+async def test_formatting_usage_custom_help(runner):
     @click.command(context_settings=dict(help_option_names=["--man"]))
     @click.argument("arg")
     def cmd(arg):
         click.echo(f"arg:{arg}")
 
-    result = runner.invoke(cmd, [])
+    result = await runner.invoke(cmd, [])
     assert result.exit_code == 2
     assert result.output.splitlines() == [
         "Usage: cmd [OPTIONS] ARG",
@@ -250,9 +258,10 @@ def test_formatting_usage_custom_help(runner):
     ]
 
 
-def test_formatting_custom_type_metavar(runner):
+@pytest.mark.anyio
+async def test_formatting_custom_type_metavar(runner):
     class MyType(click.ParamType):
-        def get_metavar(self, param):
+        def get_metavar(self, param: click.Parameter, ctx: click.Context):
             return "MY_TYPE"
 
     @click.command("foo")
@@ -261,7 +270,7 @@ def test_formatting_custom_type_metavar(runner):
     def cmd(param):
         pass
 
-    result = runner.invoke(cmd, "--help")
+    result = await runner.invoke(cmd, "--help")
     assert not result.exception
     assert result.output.splitlines() == [
         "Usage: foo [OPTIONS] MY_TYPE",
@@ -271,7 +280,8 @@ def test_formatting_custom_type_metavar(runner):
     ]
 
 
-def test_truncating_docstring(runner):
+@pytest.mark.anyio
+async def test_truncating_docstring(runner):
     @click.command()
     @click.pass_context
     def cli(ctx):
@@ -285,7 +295,7 @@ def test_truncating_docstring(runner):
         :param click.core.Context ctx: Click context.
         """
 
-    result = runner.invoke(cli, ["--help"], terminal_width=60)
+    result = await runner.invoke(cli, ["--help"], terminal_width=60)
     assert not result.exception
     assert result.output.splitlines() == [
         "Usage: cli [OPTIONS]",
@@ -300,59 +310,77 @@ def test_truncating_docstring(runner):
     ]
 
 
-def test_global_show_default(runner):
+@pytest.mark.anyio
+async def test_truncating_docstring_no_help(runner):
+    @click.command()
+    @click.pass_context
+    def cli(ctx):
+        """
+        \f
+
+        This text should be truncated.
+        """
+
+    result = await runner.invoke(cli, ["--help"], terminal_width=60)
+    assert not result.exception
+    assert result.output.splitlines() == [
+        "Usage: cli [OPTIONS]",
+        "",
+        "Options:",
+        "  --help  Show this message and exit.",
+    ]
+
+
+@pytest.mark.anyio
+async def test_removing_multiline_marker(runner):
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command()
+    def cmd1():
+        """\b
+        This is command with a multiline help text
+        which should not be rewrapped.
+        The output of the short help text should
+        not contain the multiline marker.
+        """
+        pass
+
+    result = await runner.invoke(cli, ["--help"])
+    assert "\b" not in result.output
+
+
+@pytest.mark.anyio
+async def test_global_show_default(runner):
     @click.command(context_settings=dict(show_default=True))
     @click.option("-f", "in_file", default="out.txt", help="Output file name")
     def cli():
         pass
 
-    result = runner.invoke(cli, ["--help"],)
+    result = await runner.invoke(cli, ["--help"])
+    # the default to "--help" is not shown because it is False
     assert result.output.splitlines() == [
         "Usage: cli [OPTIONS]",
         "",
         "Options:",
         "  -f TEXT  Output file name  [default: out.txt]",
-        "  --help   Show this message and exit.  [default: False]",
+        "  --help   Show this message and exit.",
     ]
 
 
-def test_formatting_usage_multiline_option_padding(runner):
-    @click.command("foo")
-    @click.option("--bar", help="This help message will be padded if it wraps.")
-    def cli():
-        pass
-
-    result = runner.invoke(cli, "--help", terminal_width=45)
-    assert not result.exception
-    assert result.output.splitlines() == [
-        "Usage: foo [OPTIONS]",
-        "",
-        "Options:",
-        "  --bar TEXT  This help message will be",
-        "              padded if it wraps.",
-        "",
-        "  --help      Show this message and exit.",
-    ]
-
-
-def test_formatting_usage_no_option_padding(runner):
-    @click.command("foo")
-    @click.option("--bar", help="This help message will be padded if it wraps.")
-    def cli():
-        pass
-
-    result = runner.invoke(cli, "--help", terminal_width=80)
-    assert not result.exception
-    assert result.output.splitlines() == [
-        "Usage: foo [OPTIONS]",
-        "",
-        "Options:",
-        "  --bar TEXT  This help message will be padded if it wraps.",
-        "  --help      Show this message and exit.",
-    ]
-
-
-def test_formatting_with_options_metavar_empty(runner):
+@pytest.mark.anyio
+async def test_formatting_with_options_metavar_empty(runner):
     cli = click.Command("cli", options_metavar="", params=[click.Argument(["var"])])
-    result = runner.invoke(cli, ["--help"])
+    result = await runner.invoke(cli, ["--help"])
     assert "Usage: cli VAR\n" in result.output
+
+
+def test_help_formatter_write_text():
+    text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+    formatter = click.HelpFormatter(width=len("  Lorem ipsum dolor sit amet,"))
+    formatter.current_indent = 2
+    formatter.write_text(text)
+    actual = formatter.getvalue()
+    expected = "  Lorem ipsum dolor sit amet,\n  consectetur adipiscing elit\n"
+    assert actual == expected
