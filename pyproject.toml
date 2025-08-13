@@ -1,10 +1,10 @@
 [project]
 name = "asyncclick"
-description = "Composable command line interface toolkit"
+description = "Composable command line interface toolkit, async fork"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.txt"]
-maintainers = [{name = "Pallets", email = "contact@palletsprojects.com"}]
+maintainers = [{name = "Matthias Urlichs", email = "matthias@urlichs.de"}]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -12,18 +12,14 @@ classifiers = [
     "Programming Language :: Python",
     "Typing :: Typed",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "colorama; platform_system == 'Windows'",
 ]
 version = "8.3.0.3"
 
 [project.urls]
-Donate = "https://palletsprojects.com/donate"
-Documentation = "https://click.palletsprojects.com/"
-Changes = "https://click.palletsprojects.com/page/changes/"
-Source = "https://github.com/pallets/click/"
-Chat = "https://discord.gg/pallets"
+Source = "https://github.com/python-trio/asyncclick/"
 
 [dependency-groups]
 dev = [
