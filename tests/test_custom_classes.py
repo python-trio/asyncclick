@@ -19,7 +19,8 @@ async def test_command_context_class():
     assert isinstance(context, CustomContext)
 
 
-def test_context_invoke_type(runner):
+@pytest.mark.anyio
+async def test_context_invoke_type(runner):
     """A command invoked from a custom context should have a new
     context with the same type.
     """
@@ -39,11 +40,11 @@ def test_context_invoke_type(runner):
 
     @click.command(cls=CustomCommand)
     @click.pass_context
-    def first(ctx):
+    async def first(ctx):
         assert isinstance(ctx, CustomContext)
-        ctx.invoke(second, first_id=id(ctx))
+        await ctx.invoke(second, first_id=id(ctx))
 
-    assert not runner.invoke(first).exception
+    assert not (await runner.invoke(first)).exception
 
 
 def test_context_formatter_class():

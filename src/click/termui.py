@@ -1,25 +1,33 @@
+from __future__ import annotations
+
+import collections.abc as cabc
 import inspect
 import io
 import itertools
-import os
 import sys
 import typing as t
+from contextlib import AbstractContextManager
+from gettext import gettext as _
 
-from ._compat import is_bytes
 from ._compat import isatty
 from ._compat import strip_ansi
-from ._compat import WIN
 from .exceptions import Abort
 from .exceptions import UsageError
 from .globals import resolve_color_default
 from .types import Choice
 from .types import convert_type
+from .types import ParamType
 from .utils import echo
 from .utils import LazyFile
 
+if t.TYPE_CHECKING:
+    from ._termui_impl import ProgressBar
+
+V = t.TypeVar("V")
+
 # The prompt functions to use.  The doc tools currently override these
 # functions to customize how they work.
-visible_prompt_func = input
+visible_prompt_func: t.Callable[[str], str] = input
 
 _ansi_colors = {
     "black": 30,
@@ -43,15 +51,20 @@ _ansi_colors = {
 _ansi_reset_all = "\033[0m"
 
 
-def hidden_prompt_func(prompt):
+def hidden_prompt_func(prompt: str) -> str:
     import getpass
 
     return getpass.getpass(prompt)
 
 
 def _build_prompt(
-    text, suffix, show_default=False, default=None, show_choices=True, type=None
-):
+    text: str,
+    suffix: str,
+    show_default: bool = False,
+    default: t.Any | None = None,
+    show_choices: bool = True,
+    type: ParamType | None = None,
+) -> str:
     prompt = text
     if type is not None and show_choices and isinstance(type, Choice):
         prompt += f" ({', '.join(map(str, type.choices))})"
@@ -60,7 +73,7 @@ def _build_prompt(
     return f"{prompt}{suffix}"
 
 
-def _format_default(default):
+def _format_default(default: t.Any) -> t.Any:
     if isinstance(default, (io.IOBase, LazyFile)) and hasattr(default, "name"):
         return default.name
 
@@ -68,21 +81,21 @@ def _format_default(default):
 
 
 def prompt(
-    text,
-    default=None,
-    hide_input=False,
-    confirmation_prompt=False,
-    type=None,
-    value_proc=None,
-    prompt_suffix=": ",
-    show_default=True,
-    err=False,
-    show_choices=True,
-):
+    text: str,
+    default: t.Any | None = None,
+    hide_input: bool = False,
+    confirmation_prompt: bool | str = False,
+    type: ParamType | t.Any | None = None,
+    value_proc: t.Callable[[str], t.Any] | None = None,
+    prompt_suffix: str = ": ",
+    show_default: bool = True,
+    err: bool = False,
+    show_choices: bool = True,
+) -> t.Any:
     """Prompts a user for input.  This is a convenience function that can
     be used to prompt a user for input later.
 
-    If the user aborts the input by sending a interrupt signal, this
+    If the user aborts the input by sending an interrupt signal, this
     function will catch it and raise a :exc:`Abort` exception.
 
     :param text: the text to show for the prompt.
@@ -119,22 +132,23 @@ def prompt(
         Added the `err` parameter.
 
     """
-    result = None
 
-    def prompt_func(text):
+    def prompt_func(text: str) -> str:
         f = hidden_prompt_func if hide_input else visible_prompt_func
         try:
             # Write the prompt separately so that we get nice
             # coloring through colorama on Windows
-            echo(text, nl=False, err=err)
-            return f("")
+            echo(text.rstrip(" "), nl=False, err=err)
+            # Echo a space to stdout to work around an issue where
+            # readline causes backspace to clear the whole line.
+            return f(" ")
         except (KeyboardInterrupt, EOFError):
             # getpass doesn't print a newline if the user aborts input with ^C.
             # Allegedly this behavior is inherited from getpass(3).
             # A doc bug has been filed at https://bugs.python.org/issue24711
             if hide_input:
                 echo(None, err=err)
-            raise Abort()
+            raise Abort() from None
 
     if value_proc is None:
         value_proc = convert_type(type, default)
@@ -145,12 +159,12 @@ def prompt(
 
     if confirmation_prompt:
         if confirmation_prompt is True:
-            confirmation_prompt = "Repeat for confirmation"
+            confirmation_prompt = _("Repeat for confirmation")
 
         confirmation_prompt = _build_prompt(confirmation_prompt, prompt_suffix)
 
-    while 1:
-        while 1:
+    while True:
+        while True:
             value = prompt_func(prompt)
             if value:
                 break
@@ -161,24 +175,30 @@ def prompt(
             result = value_proc(value)
         except UsageError as e:
             if hide_input:
-                echo("Error: the value you entered was invalid", err=err)
+                echo(_("Error: The value you entered was invalid."), err=err)
             else:
-                echo(f"Error: {e.message}", err=err)  # noqa: B306
+                echo(_("Error: {e.message}").format(e=e), err=err)
             continue
         if not confirmation_prompt:
             return result
-        while 1:
+        while True:
             value2 = prompt_func(confirmation_prompt)
-            if value2:
+            is_empty = not value and not value2
+            if value2 or is_empty:
                 break
         if value == value2:
             return result
-        echo("Error: the two entered values do not match", err=err)
+        echo(_("Error: The two entered values do not match."), err=err)
 
 
 def confirm(
-    text, default=False, abort=False, prompt_suffix=": ", show_default=True, err=False
-):
+    text: str,
+    default: bool | None = False,
+    abort: bool = False,
+    prompt_suffix: str = ": ",
+    show_default: bool = True,
+    err: bool = False,
+) -> bool:
     """Prompts for confirmation (yes/no question).
 
     If the user aborts the input by sending a interrupt signal this
@@ -207,14 +227,16 @@ def confirm(
         "y/n" if default is None else ("Y/n" if default else "y/N"),
     )
 
-    while 1:
+    while True:
         try:
             # Write the prompt separately so that we get nice
             # coloring through colorama on Windows
-            echo(prompt, nl=False, err=err)
-            value = visible_prompt_func("").lower().strip()
+            echo(prompt.rstrip(" "), nl=False, err=err)
+            # Echo a space to stdout to work around an issue where
+            # readline causes backspace to clear the whole line.
+            value = visible_prompt_func(" ").lower().strip()
         except (KeyboardInterrupt, EOFError):
-            raise Abort()
+            raise Abort() from None
         if value in ("y", "yes"):
             rv = True
         elif value in ("n", "no"):
@@ -222,7 +244,7 @@ def confirm(
         elif default is not None and value == "":
             rv = default
         else:
-            echo("Error: invalid input", err=err)
+            echo(_("Error: invalid input"), err=err)
             continue
         break
     if abort and not rv:
@@ -230,27 +252,10 @@ def confirm(
     return rv
 
 
-def get_terminal_size():
-    """Returns the current size of the terminal as tuple in the form
-    ``(width, height)`` in columns and rows.
-
-    .. deprecated:: 8.0
-        Will be removed in Click 8.1. Use
-        :func:`shutil.get_terminal_size` instead.
-    """
-    import shutil
-    import warnings
-
-    warnings.warn(
-        "'click.get_terminal_size()' is deprecated and will be removed"
-        " in Click 8.1. Use 'shutil.get_terminal_size()' instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return shutil.get_terminal_size()
-
-
-def echo_via_pager(text_or_generator, color=None):
+def echo_via_pager(
+    text_or_generator: cabc.Iterable[str] | t.Callable[[], cabc.Iterable[str]] | str,
+    color: bool | None = None,
+) -> None:
     """This function takes a text and shows it via an environment specific
     pager on stdout.
 
@@ -265,11 +270,11 @@ def echo_via_pager(text_or_generator, color=None):
     color = resolve_color_default(color)
 
     if inspect.isgeneratorfunction(text_or_generator):
-        i = text_or_generator()
+        i = t.cast("t.Callable[[], cabc.Iterable[str]]", text_or_generator)()
     elif isinstance(text_or_generator, str):
         i = [text_or_generator]
     else:
-        i = iter(text_or_generator)
+        i = iter(t.cast("cabc.Iterable[str]", text_or_generator))
 
     # convert every element of i to a text type if necessary
     text_generator = (el if isinstance(el, str) else str(el) for el in i)
@@ -279,23 +284,65 @@ def echo_via_pager(text_or_generator, color=None):
     return pager(itertools.chain(text_generator, "\n"), color)
 
 
+@t.overload
 def progressbar(
-    iterable=None,
-    length=None,
-    label=None,
-    show_eta=True,
-    show_percent=None,
-    show_pos=False,
-    item_show_func=None,
-    fill_char="#",
-    empty_char="-",
-    bar_template="%(label)s  [%(bar)s]  %(info)s",
-    info_sep="  ",
-    width=36,
-    file=None,
-    color=None,
-    update_min_steps=1,
-):
+    *,
+    length: int,
+    label: str | None = None,
+    hidden: bool = False,
+    show_eta: bool = True,
+    show_percent: bool | None = None,
+    show_pos: bool = False,
+    fill_char: str = "#",
+    empty_char: str = "-",
+    bar_template: str = "%(label)s  [%(bar)s]  %(info)s",
+    info_sep: str = "  ",
+    width: int = 36,
+    file: t.TextIO | None = None,
+    color: bool | None = None,
+    update_min_steps: int = 1,
+) -> ProgressBar[int]: ...
+
+
+@t.overload
+def progressbar(
+    iterable: cabc.Iterable[V] | None = None,
+    length: int | None = None,
+    label: str | None = None,
+    hidden: bool = False,
+    show_eta: bool = True,
+    show_percent: bool | None = None,
+    show_pos: bool = False,
+    item_show_func: t.Callable[[V | None], str | None] | None = None,
+    fill_char: str = "#",
+    empty_char: str = "-",
+    bar_template: str = "%(label)s  [%(bar)s]  %(info)s",
+    info_sep: str = "  ",
+    width: int = 36,
+    file: t.TextIO | None = None,
+    color: bool | None = None,
+    update_min_steps: int = 1,
+) -> ProgressBar[V]: ...
+
+
+def progressbar(
+    iterable: cabc.Iterable[V] | None = None,
+    length: int | None = None,
+    label: str | None = None,
+    hidden: bool = False,
+    show_eta: bool = True,
+    show_percent: bool | None = None,
+    show_pos: bool = False,
+    item_show_func: t.Callable[[V | None], str | None] | None = None,
+    fill_char: str = "#",
+    empty_char: str = "-",
+    bar_template: str = "%(label)s  [%(bar)s]  %(info)s",
+    info_sep: str = "  ",
+    width: int = 36,
+    file: t.TextIO | None = None,
+    color: bool | None = None,
+    update_min_steps: int = 1,
+) -> ProgressBar[V]:
     """This function creates an iterable context manager that can be used
     to iterate over something while showing a progress bar.  It will
     either iterate over the `iterable` or `length` items (that are counted
@@ -358,6 +405,9 @@ def progressbar(
                    length.  If an iterable is not provided the progress bar
                    will iterate over a range of that length.
     :param label: the label to show next to the progress bar.
+    :param hidden: hide the progressbar. Defaults to ``False``. When no tty is
+        detected, it will only print the progressbar label. Setting this to
+        ``False`` also disables that.
     :param show_eta: enables or disables the estimated time display.  This is
                      automatically disabled if the length cannot be
                      determined.
@@ -390,6 +440,9 @@ def progressbar(
     :param update_min_steps: Render only when this many updates have
         completed. This allows tuning for very fast iterators.
 
+    .. versionadded:: 8.2
+        The ``hidden`` argument.
+
     .. versionchanged:: 8.0
         Output is shown even if execution time is less than 0.5 seconds.
 
@@ -401,11 +454,10 @@ def progressbar(
         in 7.0 that removed all output.
 
     .. versionadded:: 8.0
-       Added the ``update_min_steps`` parameter.
+       The ``update_min_steps`` parameter.
 
-    .. versionchanged:: 4.0
-        Added the ``color`` parameter. Added the ``update`` method to
-        the object.
+    .. versionadded:: 4.0
+        The ``color`` parameter and ``update`` method.
 
     .. versionadded:: 2.0
     """
@@ -415,6 +467,7 @@ def progressbar(
     return ProgressBar(
         iterable=iterable,
         length=length,
+        hidden=hidden,
         show_eta=show_eta,
         show_percent=show_percent,
         show_pos=show_pos,
@@ -431,7 +484,7 @@ def progressbar(
     )
 
 
-def clear():
+def clear() -> None:
     """Clears the terminal screen.  This will have the effect of clearing
     the whole visible space of the terminal and moving the cursor to the
     top left.  This does not do anything if not connected to a terminal.
@@ -440,13 +493,12 @@ def clear():
     """
     if not isatty(sys.stdout):
         return
-    if WIN:
-        os.system("cls")
-    else:
-        sys.stdout.write("\033[2J\033[1;1H")
+
+    # ANSI escape \033[2J clears the screen, \033[1;1H moves the cursor
+    echo("\033[2J\033[1;1H", nl=False)
 
 
-def _interpret_color(color, offset=0):
+def _interpret_color(color: int | tuple[int, int, int] | str, offset: int = 0) -> str:
     if isinstance(color, int):
         return f"{38 + offset};5;{color:d}"
 
@@ -458,17 +510,19 @@ def _interpret_color(color, offset=0):
 
 
 def style(
-    text,
-    fg=None,
-    bg=None,
-    bold=None,
-    dim=None,
-    underline=None,
-    blink=None,
-    reverse=None,
-    strikethrough=None,
-    reset=True,
-):
+    text: t.Any,
+    fg: int | tuple[int, int, int] | str | None = None,
+    bg: int | tuple[int, int, int] | str | None = None,
+    bold: bool | None = None,
+    dim: bool | None = None,
+    underline: bool | None = None,
+    overline: bool | None = None,
+    italic: bool | None = None,
+    blink: bool | None = None,
+    reverse: bool | None = None,
+    strikethrough: bool | None = None,
+    reset: bool = True,
+) -> str:
     """Styles a text with ANSI styles and returns the new string.  By
     default the styling is self contained which means that at the end
     of the string a reset code is issued.  This can be prevented by
@@ -518,6 +572,8 @@ def style(
     :param dim: if provided this will enable or disable dim mode.  This is
                 badly supported.
     :param underline: if provided this will enable or disable underline.
+    :param overline: if provided this will enable or disable overline.
+    :param italic: if provided this will enable or disable italic.
     :param blink: if provided this will enable or disable blinking.
     :param reverse: if provided this will enable or disable inverse
                     rendering (foreground becomes background and the
@@ -535,7 +591,8 @@ def style(
        Added support for 256 and RGB color codes.
 
     .. versionchanged:: 8.0
-        Added the ``strikethrough`` parameter.
+        Added the ``strikethrough``, ``italic``, and ``overline``
+        parameters.
 
     .. versionchanged:: 7.0
         Added support for bright colors.
@@ -551,13 +608,13 @@ def style(
         try:
             bits.append(f"\033[{_interpret_color(fg)}m")
         except KeyError:
-            raise TypeError(f"Unknown color {fg!r}")
+            raise TypeError(f"Unknown color {fg!r}") from None
 
     if bg:
         try:
             bits.append(f"\033[{_interpret_color(bg, 10)}m")
         except KeyError:
-            raise TypeError(f"Unknown color {bg!r}")
+            raise TypeError(f"Unknown color {bg!r}") from None
 
     if bold is not None:
         bits.append(f"\033[{1 if bold else 22}m")
@@ -565,6 +622,10 @@ def style(
         bits.append(f"\033[{2 if dim else 22}m")
     if underline is not None:
         bits.append(f"\033[{4 if underline else 24}m")
+    if overline is not None:
+        bits.append(f"\033[{53 if overline else 55}m")
+    if italic is not None:
+        bits.append(f"\033[{3 if italic else 23}m")
     if blink is not None:
         bits.append(f"\033[{5 if blink else 25}m")
     if reverse is not None:
@@ -577,7 +638,7 @@ def style(
     return "".join(bits)
 
 
-def unstyle(text):
+def unstyle(text: str) -> str:
     """Removes ANSI styling information from a string.  Usually it's not
     necessary to use this function as Click's echo function will
     automatically remove styling if necessary.
@@ -589,7 +650,14 @@ def unstyle(text):
     return strip_ansi(text)
 
 
-def secho(message=None, file=None, nl=True, err=False, color=None, **styles):
+def secho(
+    message: t.Any | None = None,
+    file: t.IO[t.AnyStr] | None = None,
+    nl: bool = True,
+    err: bool = False,
+    color: bool | None = None,
+    **styles: t.Any,
+) -> None:
     """This function combines :func:`echo` and :func:`style` into one
     call.  As such the following two calls are the same::
 
@@ -610,15 +678,51 @@ def secho(message=None, file=None, nl=True, err=False, color=None, **styles):
 
     .. versionadded:: 2.0
     """
-    if message is not None and not is_bytes(message):
+    if message is not None and not isinstance(message, (bytes, bytearray)):
         message = style(message, **styles)
 
     return echo(message, file=file, nl=nl, err=err, color=color)
 
 
+@t.overload
 def edit(
-    text=None, editor=None, env=None, require_save=True, extension=".txt", filename=None
-):
+    text: bytes | bytearray,
+    editor: str | None = None,
+    env: cabc.Mapping[str, str] | None = None,
+    require_save: bool = False,
+    extension: str = ".txt",
+) -> bytes | None: ...
+
+
+@t.overload
+def edit(
+    text: str,
+    editor: str | None = None,
+    env: cabc.Mapping[str, str] | None = None,
+    require_save: bool = True,
+    extension: str = ".txt",
+) -> str | None: ...
+
+
+@t.overload
+def edit(
+    text: None = None,
+    editor: str | None = None,
+    env: cabc.Mapping[str, str] | None = None,
+    require_save: bool = True,
+    extension: str = ".txt",
+    filename: str | cabc.Iterable[str] | None = None,
+) -> None: ...
+
+
+def edit(
+    text: str | bytes | bytearray | None = None,
+    editor: str | None = None,
+    env: cabc.Mapping[str, str] | None = None,
+    require_save: bool = True,
+    extension: str = ".txt",
+    filename: str | cabc.Iterable[str] | None = None,
+) -> str | bytes | bytearray | None:
     r"""Edits the given text in the defined editor.  If an editor is given
     (should be the full path to the executable but the regular operating
     system search path is used for finding the executable) it overrides
@@ -644,19 +748,32 @@ def edit(
                       highlighting.
     :param filename: if provided it will edit this file instead of the
                      provided text contents.  It will not use a temporary
-                     file as an indirection in that case.
+                     file as an indirection in that case. If the editor supports
+                     editing multiple files at once, a sequence of files may be
+                     passed as well. Invoke `click.file` once per file instead
+                     if multiple files cannot be managed at once or editing the
+                     files serially is desired.
+
+    .. versionchanged:: 8.2.0
+        ``filename`` now accepts any ``Iterable[str]`` in addition to a ``str``
+        if the ``editor`` supports editing multiple files at once.
+
     """
     from ._termui_impl import Editor
 
-    editor = Editor(
-        editor=editor, env=env, require_save=require_save, extension=extension
-    )
+    ed = Editor(editor=editor, env=env, require_save=require_save, extension=extension)
+
     if filename is None:
-        return editor.edit(text)
-    editor.edit_file(filename)
+        return ed.edit(text)
+
+    if isinstance(filename, str):
+        filename = (filename,)
+
+    ed.edit_files(filenames=filename)
+    return None
 
 
-def launch(url, wait=False, locate=False):
+def launch(url: str, wait: bool = False, locate: bool = False) -> int:
     """This function launches the given URL (or filename) in the default
     viewer application for this file type.  If this is an executable, it
     might launch the executable in a new session.  The return value is
@@ -687,10 +804,10 @@ def launch(url, wait=False, locate=False):
 
 # If this is provided, getchar() calls into this instead.  This is used
 # for unittesting purposes.
-_getchar: t.Optional[t.Callable[[bool], str]] = None
+_getchar: t.Callable[[bool], str] | None = None
 
 
-def getchar(echo=False):
+def getchar(echo: bool = False) -> str:
     """Fetches a single character from the terminal and returns it.  This
     will always return a unicode character and under certain rare
     circumstances this might return more than one character.  The
@@ -710,19 +827,23 @@ def getchar(echo=False):
     :param echo: if set to `True`, the character read will also show up on
                  the terminal.  The default is to not show it.
     """
-    f = _getchar
-    if f is None:
+    global _getchar
+
+    if _getchar is None:
         from ._termui_impl import getchar as f
-    return f(echo)
+
+        _getchar = f
+
+    return _getchar(echo)
 
 
-def raw_terminal():
+def raw_terminal() -> AbstractContextManager[int]:
     from ._termui_impl import raw_terminal as f
 
     return f()
 
 
-def pause(info="Press any key to continue ...", err=False):
+def pause(info: str | None = None, err: bool = False) -> None:
     """This command stops execution and waits for the user to press any
     key to continue.  This is similar to the Windows batch "pause"
     command.  If the program is not run through a terminal, this command
@@ -733,12 +854,17 @@ def pause(info="Press any key to continue ...", err=False):
     .. versionadded:: 4.0
        Added the `err` parameter.
 
-    :param info: the info string to print before pausing.
+    :param info: The message to print before pausing. Defaults to
+        ``"Press any key to continue..."``.
     :param err: if set to message goes to ``stderr`` instead of
                 ``stdout``, the same as with echo.
     """
     if not isatty(sys.stdin) or not isatty(sys.stdout):
         return
+
+    if info is None:
+        info = _("Press any key to continue...")
+
     try:
         if info:
             echo(info, nl=False, err=err)

@@ -11,7 +11,8 @@ def debug():
     )
 
 
-def test_basic_chaining(runner):
+@pytest.mark.anyio
+async def test_basic_chaining(runner):
     @click.group(chain=True)
     def cli():
         pass
@@ -24,7 +25,7 @@ def test_basic_chaining(runner):
     def bdist():
         click.echo("bdist called")
 
-    result = runner.invoke(cli, ["bdist", "sdist", "bdist"])
+    result = await runner.invoke(cli, ["bdist", "sdist", "bdist"])
     assert not result.exception
     assert result.output.splitlines() == [
         "bdist called",
@@ -33,7 +34,18 @@ def test_basic_chaining(runner):
     ]
 
 
-def test_chaining_help(runner):
+@pytest.mark.parametrize(
+    ("args", "expect"),
+    [
+        (["--help"], "COMMAND1 [ARGS]... [COMMAND2 [ARGS]...]..."),
+        (["--help"], "ROOT HELP"),
+        (["sdist", "--help"], "SDIST HELP"),
+        (["bdist", "--help"], "BDIST HELP"),
+        (["bdist", "sdist", "--help"], "SDIST HELP"),
+    ],
+)
+@pytest.mark.anyio
+async def test_chaining_help(runner, args, expect):
     @click.group(chain=True)
     def cli():
         """ROOT HELP"""
@@ -49,25 +61,13 @@ def test_chaining_help(runner):
         """BDIST HELP"""
         click.echo("bdist called")
 
-    result = runner.invoke(cli, ["--help"])
+    result = await runner.invoke(cli, args)
     assert not result.exception
-    assert "COMMAND1 [ARGS]... [COMMAND2 [ARGS]...]..." in result.output
-    assert "ROOT HELP" in result.output
-
-    result = runner.invoke(cli, ["sdist", "--help"])
-    assert not result.exception
-    assert "SDIST HELP" in result.output
-
-    result = runner.invoke(cli, ["bdist", "--help"])
-    assert not result.exception
-    assert "BDIST HELP" in result.output
-
-    result = runner.invoke(cli, ["bdist", "sdist", "--help"])
-    assert not result.exception
-    assert "SDIST HELP" in result.output
+    assert expect in result.output
 
 
-def test_chaining_with_options(runner):
+@pytest.mark.anyio
+async def test_chaining_with_options(runner):
     @click.group(chain=True)
     def cli():
         pass
@@ -82,31 +82,33 @@ def test_chaining_with_options(runner):
     def bdist(format):
         click.echo(f"bdist called {format}")
 
-    result = runner.invoke(cli, ["bdist", "--format=1", "sdist", "--format=2"])
+    result = await runner.invoke(cli, ["bdist", "--format=1", "sdist", "--format=2"])
     assert not result.exception
     assert result.output.splitlines() == ["bdist called 1", "sdist called 2"]
 
 
-@pytest.mark.parametrize(("chain", "expect"), [(False, "None"), (True, "[]")])
-def test_no_command_result_callback(runner, chain, expect):
+@pytest.mark.parametrize(("chain", "expect"), [(False, "1"), (True, "[]")])
+@pytest.mark.anyio
+async def test_no_command_result_callback(runner, chain, expect):
     """When a group has ``invoke_without_command=True``, the result
     callback is always invoked. A regular group invokes it with
-    ``None``, a chained group with ``[]``.
+    its return value, a chained group with ``[]``.
     """
 
     @click.group(invoke_without_command=True, chain=chain)
     def cli():
-        pass
+        return 1
 
-    @cli.resultcallback()
+    @cli.result_callback()
     def process_result(result):
-        click.echo(str(result), nl=False)
+        click.echo(result, nl=False)
 
-    result = runner.invoke(cli, [])
+    result = await runner.invoke(cli, [])
     assert result.output == expect
 
 
-def test_chaining_with_arguments(runner):
+@pytest.mark.anyio
+async def test_chaining_with_arguments(runner):
     @click.group(chain=True)
     def cli():
         pass
@@ -121,20 +123,29 @@ def test_chaining_with_arguments(runner):
     def bdist(format):
         click.echo(f"bdist called {format}")
 
-    result = runner.invoke(cli, ["bdist", "1", "sdist", "2"])
+    result = await runner.invoke(cli, ["bdist", "1", "sdist", "2"])
     assert not result.exception
     assert result.output.splitlines() == ["bdist called 1", "sdist called 2"]
 
 
-def test_pipeline(runner):
+@pytest.mark.parametrize(
+    ("args", "input", "expect"),
+    [
+        (["-f", "-"], "foo\nbar", ["foo", "bar"]),
+        (["-f", "-", "strip"], "foo \n bar", ["foo", "bar"]),
+        (["-f", "-", "strip", "uppercase"], "foo \n bar", ["FOO", "BAR"]),
+    ],
+)
+@pytest.mark.anyio
+async def test_pipeline(runner, args, input, expect):
     @click.group(chain=True, invoke_without_command=True)
-    @click.option("-i", "--input", type=click.File("r"))
-    def cli(input):
+    @click.option("-f", type=click.File("r"))
+    def cli(f):
         pass
 
-    @cli.resultcallback()
-    def process_pipeline(processors, input):
-        iterator = (x.rstrip("\r\n") for x in input)
+    @cli.result_callback()
+    def process_pipeline(processors, f):
+        iterator = (x.rstrip("\r\n") for x in f)
         for processor in processors:
             iterator = processor(iterator)
         for item in iterator:
@@ -156,20 +167,13 @@ def test_pipeline(runner):
 
         return processor
 
-    result = runner.invoke(cli, ["-i", "-"], input="foo\nbar")
-    assert not result.exception
-    assert result.output.splitlines() == ["foo", "bar"]
-
-    result = runner.invoke(cli, ["-i", "-", "strip"], input="foo \n bar")
-    assert not result.exception
-    assert result.output.splitlines() == ["foo", "bar"]
-
-    result = runner.invoke(cli, ["-i", "-", "strip", "uppercase"], input="foo \n bar")
-    assert not result.exception
-    assert result.output.splitlines() == ["FOO", "BAR"]
+    result = await runner.invoke(cli, args, input=input)
+    # last two lines are '' and 'Aborted!'
+    assert result.output.splitlines()[:-2] == expect
 
 
-def test_args_and_chain(runner):
+@pytest.mark.anyio
+async def test_args_and_chain(runner):
     @click.group(chain=True)
     def cli():
         debug()
@@ -186,12 +190,13 @@ def test_args_and_chain(runner):
     def c():
         debug()
 
-    result = runner.invoke(cli, ["a", "b", "c"])
+    result = await runner.invoke(cli, ["a", "b", "c"])
     assert not result.exception
     assert result.output.splitlines() == ["cli=", "a=", "b=", "c="]
 
 
-def test_multicommand_arg_behavior(runner):
+@pytest.mark.anyio
+async def test_group_arg_behavior(runner):
     with pytest.raises(RuntimeError):
 
         @click.group(chain=True)
@@ -215,13 +220,14 @@ def test_multicommand_arg_behavior(runner):
     def a():
         click.echo("a")
 
-    result = runner.invoke(cli, ["foo", "a"])
+    result = await runner.invoke(cli, ["foo", "a"])
     assert not result.exception
     assert result.output.splitlines() == ["cli:foo", "a"]
 
 
 @pytest.mark.xfail
-def test_multicommand_chaining(runner):
+@pytest.mark.anyio
+async def test_group_chaining(runner):
     @click.group(chain=True)
     def cli():
         debug()
@@ -242,6 +248,6 @@ def test_multicommand_chaining(runner):
     def l1b():
         debug()
 
-    result = runner.invoke(cli, ["l1a", "l2a", "l1b"])
+    result = await runner.invoke(cli, ["l1a", "l2a", "l1b"])
     assert not result.exception
     assert result.output.splitlines() == ["cli=", "l1a=", "l2a=", "l1b="]

@@ -1,9 +1,11 @@
 import platform
+import tempfile
 import time
+
+import pytest
 
 import asyncclick as click
 import asyncclick._termui_impl
-import pytest
 from asyncclick._compat import WIN
 
 
@@ -18,15 +20,15 @@ class FakeClock:
         return self.now
 
 
-def _create_progress(length=10, length_known=True, **kwargs):
+def _create_progress(length=10, **kwargs):
     progress = click.progressbar(tuple(range(length)))
     for key, value in kwargs.items():
         setattr(progress, key, value)
-    progress.length_known = length_known
     return progress
 
 
-def test_progressbar_strip_regression(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_strip_regression(runner, monkeypatch):
     label = "    padded line"
 
     @click.command()
@@ -35,11 +37,15 @@ def test_progressbar_strip_regression(runner, monkeypatch):
             for _ in progress:
                 pass
 
-    monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
-    assert label in runner.invoke(cli, []).output
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    assert (
+        label
+        in (await runner.invoke(cli, [], standalone_mode=False, catch_exceptions=False)).output
+    )
 
 
-def test_progressbar_length_hint(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_length_hint(runner, monkeypatch):
     class Hinted:
         def __init__(self, n):
             self.items = list(range(n))
@@ -65,11 +71,12 @@ def test_progressbar_length_hint(runner, monkeypatch):
                 pass
 
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
-    result = runner.invoke(cli, [])
+    result = await runner.invoke(cli, [])
     assert result.exception is None
 
 
-def test_progressbar_hidden(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_no_tty(runner, monkeypatch):
     @click.command()
     def cli():
         with _create_progress(label="working") as progress:
@@ -77,7 +84,19 @@ def test_progressbar_hidden(runner, monkeypatch):
                 pass
 
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: False)
-    assert runner.invoke(cli, []).output == "working\n"
+    assert (await runner.invoke(cli, [])).output == "working\n"
+
+
+@pytest.mark.anyio
+async def test_progressbar_hidden_manual(runner, monkeypatch):
+    @click.command()
+    def cli():
+        with _create_progress(label="see nothing", hidden=True) as progress:
+            for _ in progress:
+                pass
+
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    assert (await runner.invoke(cli, [])).output == ""
 
 
 @pytest.mark.parametrize("avg, expected", [([], 0.0), ([1, 4], 2.5)])
@@ -111,12 +130,9 @@ def test_progressbar_format_eta(runner, eta, expected):
 
 @pytest.mark.parametrize("pos, length", [(0, 5), (-1, 1), (5, 5), (6, 5), (4, 0)])
 def test_progressbar_format_pos(runner, pos, length):
-    with _create_progress(length, length_known=length != 0, pos=pos) as progress:
+    with _create_progress(length, pos=pos) as progress:
         result = progress.format_pos()
-        if progress.length_known:
-            assert result == f"{pos}/{length}"
-        else:
-            assert result == str(pos)
+        assert result == f"{pos}/{length}"
 
 
 @pytest.mark.parametrize(
@@ -124,33 +140,30 @@ def test_progressbar_format_pos(runner, pos, length):
     [
         (8, False, 7, 0, "#######-"),
         (0, True, 8, 0, "########"),
-        (0, False, 8, 0, "--------"),
-        (0, False, 5, 3, "#-------"),
     ],
 )
 def test_progressbar_format_bar(runner, length, finished, pos, avg, expected):
     with _create_progress(
-        length, length_known=length != 0, width=8, pos=pos, finished=finished, avg=[avg]
+        length, width=8, pos=pos, finished=finished, avg=[avg]
     ) as progress:
         assert progress.format_bar() == expected
 
 
 @pytest.mark.parametrize(
-    "length, length_known, show_percent, show_pos, pos, expected",
+    "length, show_percent, show_pos, pos, expected",
     [
-        (0, True, True, True, 0, "  [--------]  0/0    0%"),
-        (0, True, False, True, 0, "  [--------]  0/0"),
-        (0, True, False, False, 0, "  [--------]"),
-        (0, False, False, False, 0, "  [--------]"),
-        (8, True, True, True, 8, "  [########]  8/8  100%"),
+        (0, True, True, 0, "  [--------]  0/0    0%"),
+        (0, False, True, 0, "  [--------]  0/0"),
+        (0, False, False, 0, "  [--------]"),
+        (0, False, False, 0, "  [--------]"),
+        (8, True, True, 8, "  [########]  8/8  100%"),
     ],
 )
 def test_progressbar_format_progress_line(
-    runner, length, length_known, show_percent, show_pos, pos, expected
+    runner, length, show_percent, show_pos, pos, expected
 ):
     with _create_progress(
         length,
-        length_known,
         width=8,
         show_percent=show_percent,
         pos=pos,
@@ -179,12 +192,14 @@ def test_progressbar_init_exceptions(runner):
 
 
 def test_progressbar_iter_outside_with_exceptions(runner):
+    progress = click.progressbar(length=2)
+
     with pytest.raises(RuntimeError, match="with block"):
-        progress = click.progressbar(length=2)
         iter(progress)
 
 
-def test_progressbar_is_iterator(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_is_iterator(runner, monkeypatch):
     @click.command()
     def cli():
         with click.progressbar(range(10), label="test") as progress:
@@ -195,11 +210,12 @@ def test_progressbar_is_iterator(runner, monkeypatch):
                     break
 
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
-    result = runner.invoke(cli, [])
+    result = await runner.invoke(cli, [])
     assert result.exception is None
 
 
-def test_choices_list_in_prompt(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_choices_list_in_prompt(runner, monkeypatch):
     @click.command()
     @click.option(
         "-g", type=click.Choice(["none", "day", "week", "month"]), prompt=True
@@ -217,24 +233,25 @@ def test_choices_list_in_prompt(runner, monkeypatch):
     def cli_without_choices(g):
         pass
 
-    result = runner.invoke(cli_with_choices, [], input="none")
+    result = await runner.invoke(cli_with_choices, [], input="none")
     assert "(none, day, week, month)" in result.output
 
-    result = runner.invoke(cli_without_choices, [], input="none")
+    result = await runner.invoke(cli_without_choices, [], input="none")
     assert "(none, day, week, month)" not in result.output
 
 
 @pytest.mark.parametrize(
     "file_kwargs", [{"mode": "rt"}, {"mode": "rb"}, {"lazy": True}]
 )
-def test_file_prompt_default_format(runner, file_kwargs):
+@pytest.mark.anyio
+async def test_file_prompt_default_format(runner, file_kwargs):
     @click.command()
     @click.option("-f", default=__file__, prompt="file", type=click.File(**file_kwargs))
     def cli(f):
         click.echo(f.name)
 
-    result = runner.invoke(cli)
-    assert result.output == f"file [{__file__}]: \n{__file__}\n"
+    result = await runner.invoke(cli, input="\n")
+    assert result.output == f"file [{__file__}]: {__file__}\n"
 
 
 def test_secho(runner):
@@ -249,7 +266,7 @@ def test_secho(runner):
     ("value", "expect"), [(123, b"\x1b[45m123\x1b[0m"), (b"test", b"test")]
 )
 def test_secho_non_text(runner, value, expect):
-    with runner.isolation() as (out, _):
+    with runner.isolation() as (out, _, _):
         click.secho(value, nl=False, color=True, bg="magenta")
         result = out.getvalue()
         assert result == expect
@@ -260,7 +277,8 @@ def test_progressbar_yields_all_items(runner):
         assert len(list(progress)) == 3
 
 
-def test_progressbar_update(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_update(runner, monkeypatch):
     fake_clock = FakeClock()
 
     @click.command()
@@ -272,7 +290,7 @@ def test_progressbar_update(runner, monkeypatch):
 
     monkeypatch.setattr(time, "time", fake_clock.time)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda _: True)
-    output = runner.invoke(cli, []).output
+    output = (await runner.invoke(cli, [])).output
 
     lines = [line for line in output.split("\n") if "[" in line]
 
@@ -283,7 +301,8 @@ def test_progressbar_update(runner, monkeypatch):
     assert "100%          " in lines[4]
 
 
-def test_progressbar_item_show_func(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_item_show_func(runner, monkeypatch):
     """item_show_func should show the current item being yielded."""
 
     @click.command()
@@ -293,13 +312,14 @@ def test_progressbar_item_show_func(runner, monkeypatch):
                 click.echo(f" item {item}")
 
     monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
-    lines = runner.invoke(cli).output.splitlines()
+    lines = (await runner.invoke(cli)).output.splitlines()
 
     for i, line in enumerate(x for x in lines if "item" in x):
         assert f"{i}    item {i}" in line
 
 
-def test_progressbar_update_with_item_show_func(runner, monkeypatch):
+@pytest.mark.anyio
+async def test_progressbar_update_with_item_show_func(runner, monkeypatch):
     @click.command()
     def cli():
         with click.progressbar(
@@ -310,7 +330,7 @@ def test_progressbar_update_with_item_show_func(runner, monkeypatch):
                 click.echo()
 
     monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
-    output = runner.invoke(cli, []).output
+    output = (await runner.invoke(cli, [])).output
 
     lines = [line for line in output.split("\n") if "[" in line]
 
@@ -372,22 +392,37 @@ def test_fast_edit(runner):
     assert result == "aTest\nbTest\n"
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="No sed on Windows.")
+def test_edit(runner):
+    with tempfile.NamedTemporaryFile(mode="w") as named_tempfile:
+        named_tempfile.write("a\nb")
+        named_tempfile.flush()
+
+        result = click.edit(filename=named_tempfile.name, editor="sed -i~ 's/$/Test/'")
+        assert result is None
+
+        # We need ot reopen the file as it becomes unreadable after the edit.
+        with open(named_tempfile.name) as reopened_file:
+            assert reopened_file.read() == "aTest\nbTest"
+
+
 @pytest.mark.parametrize(
     ("prompt_required", "required", "args", "expect"),
     [
         (True, False, None, "prompt"),
-        (True, False, ["-v"], "-v option requires an argument"),
+        (True, False, ["-v"], "Option '-v' requires an argument."),
         (False, True, None, "prompt"),
         (False, True, ["-v"], "prompt"),
     ],
 )
-def test_prompt_required_with_required(runner, prompt_required, required, args, expect):
+@pytest.mark.anyio
+async def test_prompt_required_with_required(runner, prompt_required, required, args, expect):
     @click.command()
     @click.option("-v", prompt=True, prompt_required=prompt_required, required=required)
     def cli(v):
         click.echo(str(v))
 
-    result = runner.invoke(cli, args, input="prompt")
+    result = await runner.invoke(cli, args, input="prompt")
     assert expect in result.output
 
 
@@ -408,7 +443,8 @@ def test_prompt_required_with_required(runner, prompt_required, required, args, 
         pytest.param(["-v", "-o", "42"], ("prompt", "42"), id="no value opt"),
     ],
 )
-def test_prompt_required_false(runner, args, expect):
+@pytest.mark.anyio
+async def test_prompt_required_false(runner, args, expect):
     @click.command()
     @click.option("-v", "--value", prompt=True, prompt_required=False)
     @click.option("-o")
@@ -418,30 +454,50 @@ def test_prompt_required_false(runner, args, expect):
 
         return value
 
-    result = runner.invoke(cli, args=args, input="prompt", standalone_mode=False)
+    result = await runner.invoke(cli, args=args, input="prompt", standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
 
 
+@pytest.mark.skip("async: tries to read from /dev/tty")
 @pytest.mark.parametrize(
-    ("prompt", "input", "expect"),
+    ("prompt", "input", "default", "expect"),
     [
-        (True, "password\npassword", "password"),
-        ("Confirm Password", "password\npassword\n", "password"),
-        (False, None, None),
+        (True, "password\npassword", None, "password"),
+        ("Confirm Password", "password\npassword\n", None, "password"),
+        (True, "\n\n", "", ""),
+        (False, None, None, None),
     ],
 )
-def test_confirmation_prompt(runner, prompt, input, expect):
+@pytest.mark.anyio
+async def test_confirmation_prompt(runner, prompt, input, default, expect):
     @click.command()
     @click.option(
-        "--password", prompt=prompt, hide_input=True, confirmation_prompt=prompt
+        "--password",
+        prompt=prompt,
+        hide_input=True,
+        default=default,
+        confirmation_prompt=prompt,
     )
     def cli(password):
         return password
 
-    result = runner.invoke(cli, input=input, standalone_mode=False)
+    result = await runner.invoke(cli, input=input, standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
 
     if prompt == "Confirm Password":
         assert "Confirm Password: " in result.output
+
+
+@pytest.mark.anyio
+async def test_false_show_default_cause_no_default_display_in_prompt(runner):
+    @click.command()
+    @click.option("--arg1", show_default=False, prompt=True, default="my-default-value")
+    def cmd(arg1):
+        pass
+
+    # Confirm that the default value is not included in the output when `show_default`
+    # is False
+    result = await runner.invoke(cmd, input="my-input", standalone_mode=False)
+    assert "my-default-value" not in result.output

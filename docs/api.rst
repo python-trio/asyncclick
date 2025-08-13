@@ -6,6 +6,10 @@ API
 This part of the documentation lists the full API reference of all public
 classes and functions.
 
+.. contents::
+   :depth: 1
+   :local:
+
 Decorators
 ----------
 
@@ -63,8 +67,6 @@ Utilities
 
 .. autofunction:: pause
 
-.. autofunction:: get_terminal_size
-
 .. autofunction:: get_binary_stream
 
 .. autofunction:: get_text_stream
@@ -115,6 +117,7 @@ Context
     :members:
     :member-order: bysource
 
+.. _click-api-types:
 
 Types
 -----
@@ -136,10 +139,13 @@ Types
 .. autoclass:: Path
 
 .. autoclass:: Choice
+   :members:
 
 .. autoclass:: IntRange
 
 .. autoclass:: FloatRange
+
+.. autoclass:: DateTime
 
 .. autoclass:: Tuple
 
@@ -196,6 +202,8 @@ customizing Click's shell completion system.
 
 .. autofunction:: add_completion_class
 
+
+.. _testing:
 
 Testing
 -------

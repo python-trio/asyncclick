@@ -1,15 +1,19 @@
+from __future__ import annotations
+
+import collections.abc as cabc
 import os
+import re
 import sys
+import typing as t
+from functools import update_wrapper
+from types import ModuleType
+from types import TracebackType
 
 from ._compat import _default_text_stderr
 from ._compat import _default_text_stdout
 from ._compat import _find_binary_writer
 from ._compat import auto_wrap_for_ansi
 from ._compat import binary_streams
-from ._compat import filename_to_ui
-from ._compat import get_filesystem_encoding
-from ._compat import get_strerror
-from ._compat import is_bytes
 from ._compat import open_stream
 from ._compat import should_strip_ansi
 from ._compat import strip_ansi
@@ -17,65 +21,89 @@ from ._compat import text_streams
 from ._compat import WIN
 from .globals import resolve_color_default
 
+if t.TYPE_CHECKING:
+    import typing_extensions as te
 
-echo_native_types = (str, bytes, bytearray)
+    P = te.ParamSpec("P")
+
+R = t.TypeVar("R")
 
 
-def _posixify(name):
+def _posixify(name: str) -> str:
     return "-".join(name.split()).lower()
 
 
-def safecall(func):
+def safecall(func: t.Callable[P, R]) -> t.Callable[P, R | None]:
     """Wraps a function so that it swallows exceptions."""
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | None:
         try:
             return func(*args, **kwargs)
         except Exception:
             pass
+        return None
 
-    return wrapper
+    return update_wrapper(wrapper, func)
 
 
-def make_str(value):
+def make_str(value: t.Any) -> str:
     """Converts a value into a valid string."""
     if isinstance(value, bytes):
         try:
-            return value.decode(get_filesystem_encoding())
+            return value.decode(sys.getfilesystemencoding())
         except UnicodeError:
             return value.decode("utf-8", "replace")
     return str(value)
 
 
-def make_default_short_help(help, max_length=45):
-    """Return a condensed version of help string."""
-    line_ending = help.find("\n\n")
-    if line_ending != -1:
-        help = help[:line_ending]
-    words = help.split()
-    total_length = 0
-    result = []
-    done = False
+def make_default_short_help(help: str, max_length: int = 45) -> str:
+    """Returns a condensed version of help string."""
+    # Consider only the first paragraph.
+    paragraph_end = help.find("\n\n")
 
+    if paragraph_end != -1:
+        help = help[:paragraph_end]
+
+    # Collapse newlines, tabs, and spaces.
+    words = help.split()
+
+    if not words:
+        return ""
+
+    # The first paragraph started with a "no rewrap" marker, ignore it.
     if words[0] == "\b":
         words = words[1:]
 
-    for word in words:
-        if word[-1:] == ".":
-            done = True
-        new_length = 1 + len(word) if result else len(word)
-        if total_length + new_length > max_length:
-            result.append("...")
-            done = True
-        else:
-            if result:
-                result.append(" ")
-            result.append(word)
-        if done:
-            break
-        total_length += new_length
+    total_length = 0
+    last_index = len(words) - 1
 
-    return "".join(result)
+    for i, word in enumerate(words):
+        total_length += len(word) + (i > 0)
+
+        if total_length > max_length:  # too long, truncate
+            break
+
+        if word[-1] == ".":  # sentence end, truncate without "..."
+            return " ".join(words[: i + 1])
+
+        if total_length == max_length and i != last_index:
+            break  # not at sentence end, truncate with "..."
+    else:
+        return " ".join(words)  # no truncation needed
+
+    # Account for the length of the suffix.
+    total_length += len("...")
+
+    # remove words until the length is short enough
+    while i > 0:
+        total_length -= len(words[i]) + (i > 0)
+
+        if total_length <= max_length:
+            break
+
+        i -= 1
+
+    return " ".join(words[:i]) + "..."
 
 
 class LazyFile:
@@ -86,15 +114,22 @@ class LazyFile:
     """
 
     def __init__(
-        self, filename, mode="r", encoding=None, errors="strict", atomic=False
+        self,
+        filename: str | os.PathLike[str],
+        mode: str = "r",
+        encoding: str | None = None,
+        errors: str | None = "strict",
+        atomic: bool = False,
     ):
-        self.name = filename
+        self.name: str = os.fspath(filename)
         self.mode = mode
         self.encoding = encoding
         self.errors = errors
         self.atomic = atomic
+        self._f: t.IO[t.Any] | None
+        self.should_close: bool
 
-        if filename == "-":
+        if self.name == "-":
             self._f, self.should_close = open_stream(filename, mode, encoding, errors)
         else:
             if "r" in mode:
@@ -105,15 +140,15 @@ class LazyFile:
             self._f = None
             self.should_close = True
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> t.Any:
         return getattr(self.open(), name)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._f is not None:
             return repr(self._f)
-        return f"<unopened file '{self.name}' {self.mode}>"
+        return f"<unopened file '{format_filename(self.name)}' {self.mode}>"
 
-    def open(self):
+    def open(self) -> t.IO[t.Any]:
         """Opens the file if it's not yet open.  This call might fail with
         a :exc:`FileError`.  Not handling this error will produce an error
         that Click shows.
@@ -124,57 +159,73 @@ class LazyFile:
             rv, self.should_close = open_stream(
                 self.name, self.mode, self.encoding, self.errors, atomic=self.atomic
             )
-        except OSError as e:  # noqa: E402
+        except OSError as e:
             from .exceptions import FileError
 
-            raise FileError(self.name, hint=get_strerror(e))
+            raise FileError(self.name, hint=e.strerror) from e
         self._f = rv
         return rv
 
-    def close(self):
+    def close(self) -> None:
         """Closes the underlying file, no matter what."""
         if self._f is not None:
             self._f.close()
 
-    def close_intelligently(self):
+    def close_intelligently(self) -> None:
         """This function only closes the file if it was opened by the lazy
         file wrapper.  For instance this will never close stdin.
         """
         if self.should_close:
             self.close()
 
-    def __enter__(self):
+    def __enter__(self) -> LazyFile:
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close_intelligently()
 
-    def __iter__(self):
+    def __iter__(self) -> cabc.Iterator[t.AnyStr]:
         self.open()
-        return iter(self._f)
+        return iter(self._f)  # type: ignore
 
 
 class KeepOpenFile:
-    def __init__(self, file):
-        self._file = file
+    def __init__(self, file: t.IO[t.Any]) -> None:
+        self._file: t.IO[t.Any] = file
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> t.Any:
         return getattr(self._file, name)
 
-    def __enter__(self):
+    def __enter__(self) -> KeepOpenFile:
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         pass
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self._file)
 
-    def __iter__(self):
+    def __iter__(self) -> cabc.Iterator[t.AnyStr]:
         return iter(self._file)
 
 
-def echo(message=None, file=None, nl=True, err=False, color=None):
+def echo(
+    message: t.Any | None = None,
+    file: t.IO[t.Any] | None = None,
+    nl: bool = True,
+    err: bool = False,
+    color: bool | None = None,
+) -> None:
     """Print a message and newline to stdout or a file. This should be
     used instead of :func:`print` because it provides better support
     for different data, files, and environments.
@@ -219,47 +270,59 @@ def echo(message=None, file=None, nl=True, err=False, color=None):
         else:
             file = _default_text_stdout()
 
+        # There are no standard streams attached to write to. For example,
+        # pythonw on Windows.
+        if file is None:
+            return
+
     # Convert non bytes/text into the native string type.
-    if message is not None and not isinstance(message, echo_native_types):
-        message = str(message)
+    if message is not None and not isinstance(message, (str, bytes, bytearray)):
+        out: str | bytes | bytearray | None = str(message)
+    else:
+        out = message
 
     if nl:
-        message = message or ""
-        if isinstance(message, str):
-            message += "\n"
+        out = out or ""
+        if isinstance(out, str):
+            out += "\n"
         else:
-            message += b"\n"
+            out += b"\n"
+
+    if not out:
+        file.flush()
+        return
 
     # If there is a message and the value looks like bytes, we manually
     # need to find the binary stream and write the message in there.
     # This is done separately so that most stream types will work as you
     # would expect. Eg: you can write to StringIO for other cases.
-    if message and is_bytes(message):
+    if isinstance(out, (bytes, bytearray)):
         binary_file = _find_binary_writer(file)
+
         if binary_file is not None:
             file.flush()
-            binary_file.write(message)
+            binary_file.write(out)
             binary_file.flush()
             return
 
     # ANSI style code support. For no message or bytes, nothing happens.
     # When outputting to a file instead of a terminal, strip codes.
-    if message and not is_bytes(message):
+    else:
         color = resolve_color_default(color)
+
         if should_strip_ansi(file, color):
-            message = strip_ansi(message)
+            out = strip_ansi(out)
         elif WIN:
             if auto_wrap_for_ansi is not None:
-                file = auto_wrap_for_ansi(file)
+                file = auto_wrap_for_ansi(file, color)  # type: ignore
             elif not color:
-                message = strip_ansi(message)
+                out = strip_ansi(out)
 
-    if message:
-        file.write(message)
+    file.write(out)  # type: ignore
     file.flush()
 
 
-def get_binary_stream(name):
+def get_binary_stream(name: t.Literal["stdin", "stdout", "stderr"]) -> t.BinaryIO:
     """Returns a system stream for byte processing.
 
     :param name: the name of the stream to open.  Valid names are ``'stdin'``,
@@ -271,7 +334,11 @@ def get_binary_stream(name):
     return opener()
 
 
-def get_text_stream(name, encoding=None, errors="strict"):
+def get_text_stream(
+    name: t.Literal["stdin", "stdout", "stderr"],
+    encoding: str | None = None,
+    errors: str | None = "strict",
+) -> t.TextIO:
     """Returns a system stream for text processing.  This usually returns
     a wrapped stream around a binary stream returned from
     :func:`get_binary_stream` but it also can take shortcuts for already
@@ -289,63 +356,75 @@ def get_text_stream(name, encoding=None, errors="strict"):
 
 
 def open_file(
-    filename, mode="r", encoding=None, errors="strict", lazy=False, atomic=False
-):
-    """This is similar to how the :class:`File` works but for manual
-    usage.  Files are opened non lazy by default.  This can open regular
-    files as well as stdin/stdout if ``'-'`` is passed.
+    filename: str | os.PathLike[str],
+    mode: str = "r",
+    encoding: str | None = None,
+    errors: str | None = "strict",
+    lazy: bool = False,
+    atomic: bool = False,
+) -> t.IO[t.Any]:
+    """Open a file, with extra behavior to handle ``'-'`` to indicate
+    a standard stream, lazy open on write, and atomic write. Similar to
+    the behavior of the :class:`~click.File` param type.
 
-    If stdin/stdout is returned the stream is wrapped so that the context
-    manager will not close the stream accidentally.  This makes it possible
-    to always use the function like this without having to worry to
-    accidentally close a standard stream::
+    If ``'-'`` is given to open ``stdout`` or ``stdin``, the stream is
+    wrapped so that using it in a context manager will not close it.
+    This makes it possible to use the function without accidentally
+    closing a standard stream:
+
+    .. code-block:: python
 
         with open_file(filename) as f:
             ...
 
-    .. versionadded:: 3.0
+    :param filename: The name or Path of the file to open, or ``'-'`` for
+        ``stdin``/``stdout``.
+    :param mode: The mode in which to open the file.
+    :param encoding: The encoding to decode or encode a file opened in
+        text mode.
+    :param errors: The error handling mode.
+    :param lazy: Wait to open the file until it is accessed. For read
+        mode, the file is temporarily opened to raise access errors
+        early, then closed until it is read again.
+    :param atomic: Write to a temporary file and replace the given file
+        on close.
 
-    :param filename: the name of the file to open (or ``'-'`` for stdin/stdout).
-    :param mode: the mode in which to open the file.
-    :param encoding: the encoding to use.
-    :param errors: the error handling for this file.
-    :param lazy: can be flipped to true to open the file lazily.
-    :param atomic: in atomic mode writes go into a temporary file and it's
-                   moved on close.
+    .. versionadded:: 3.0
     """
     if lazy:
-        return LazyFile(filename, mode, encoding, errors, atomic=atomic)
+        return t.cast(
+            "t.IO[t.Any]", LazyFile(filename, mode, encoding, errors, atomic=atomic)
+        )
+
     f, should_close = open_stream(filename, mode, encoding, errors, atomic=atomic)
+
     if not should_close:
-        f = KeepOpenFile(f)
+        f = t.cast("t.IO[t.Any]", KeepOpenFile(f))
+
     return f
 
 
-def get_os_args():
-    """Returns the argument part of ``sys.argv``, removing the first
-    value which is the name of the script.
+def format_filename(
+    filename: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    shorten: bool = False,
+) -> str:
+    """Format a filename as a string for display. Ensures the filename can be
+    displayed by replacing any invalid bytes or surrogate escapes in the name
+    with the replacement character ``�``.
 
-    .. deprecated:: 8.0
-        Will be removed in 8.1. Access ``sys.argv[1:]`` directly
-        instead.
-    """
-    import warnings
+    Invalid bytes or surrogate escapes will raise an error when written to a
+    stream with ``errors="strict"``. This will typically happen with ``stdout``
+    when the locale is something like ``en_GB.UTF-8``.
 
-    warnings.warn(
-        "'get_os_args' is deprecated and will be removed in 8.1. Access"
-        " 'sys.argv[1:]' directly instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return sys.argv[1:]
+    Many scenarios *are* safe to write surrogates though, due to PEP 538 and
+    PEP 540, including:
 
-
-def format_filename(filename, shorten=False):
-    """Formats a filename for user display.  The main purpose of this
-    function is to ensure that the filename can be displayed at all.  This
-    will decode the filename to unicode if necessary in a way that it will
-    not fail.  Optionally, it can shorten the filename to not include the
-    full path to the filename.
+    -   Writing to ``stderr``, which uses ``errors="backslashreplace"``.
+    -   The system has ``LANG=C.UTF-8``, ``C``, or ``POSIX``. Python opens
+        stdout and stderr with ``errors="surrogateescape"``.
+    -   None of ``LANG/LC_*`` are set. Python assumes ``LANG=C.UTF-8``.
+    -   Python is started in UTF-8 mode  with  ``PYTHONUTF8=1`` or ``-X utf8``.
+        Python opens stdout and stderr with ``errors="surrogateescape"``.
 
     :param filename: formats a filename for UI display.  This will also convert
                      the filename into unicode without failing.
@@ -354,10 +433,20 @@ def format_filename(filename, shorten=False):
     """
     if shorten:
         filename = os.path.basename(filename)
-    return filename_to_ui(filename)
+    else:
+        filename = os.fspath(filename)
+
+    if isinstance(filename, bytes):
+        filename = filename.decode(sys.getfilesystemencoding(), "replace")
+    else:
+        filename = filename.encode("utf-8", "surrogateescape").decode(
+            "utf-8", "replace"
+        )
+
+    return filename
 
 
-def get_app_dir(app_name, roaming=True, force_posix=False):
+def get_app_dir(app_name: str, roaming: bool = True, force_posix: bool = False) -> str:
     r"""Returns the config folder for the application.  The default behavior
     is to return whatever is most appropriate for the operating system.
 
@@ -372,13 +461,9 @@ def get_app_dir(app_name, roaming=True, force_posix=False):
       ``~/.config/foo-bar``
     Unix (POSIX):
       ``~/.foo-bar``
-    Win XP (roaming):
-      ``C:\Documents and Settings\<user>\Local Settings\Application Data\Foo Bar``
-    Win XP (not roaming):
-      ``C:\Documents and Settings\<user>\Application Data\Foo Bar``
-    Win 7 (roaming):
+    Windows (roaming):
       ``C:\Users\<user>\AppData\Roaming\Foo Bar``
-    Win 7 (not roaming):
+    Windows (not roaming):
       ``C:\Users\<user>\AppData\Local\Foo Bar``
 
     .. versionadded:: 2.0
@@ -386,7 +471,7 @@ def get_app_dir(app_name, roaming=True, force_posix=False):
     :param app_name: the application name.  This should be properly capitalized
                      and can contain whitespace.
     :param roaming: controls if the folder should be roaming or not on Windows.
-                    Has no affect otherwise.
+                    Has no effect otherwise.
     :param force_posix: if this is set to `True` then on any POSIX system the
                         folder will be stored in the home folder with a leading
                         dot instead of the XDG config home or darwin's
@@ -419,10 +504,10 @@ class PacifyFlushWrapper:
     pipe, all calls and attributes are proxied.
     """
 
-    def __init__(self, wrapped):
+    def __init__(self, wrapped: t.IO[t.Any]) -> None:
         self.wrapped = wrapped
 
-    def flush(self):
+    def flush(self) -> None:
         try:
             self.wrapped.flush()
         except OSError as e:
@@ -431,11 +516,13 @@ class PacifyFlushWrapper:
             if e.errno != errno.EPIPE:
                 raise
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> t.Any:
         return getattr(self.wrapped, attr)
 
 
-def _detect_program_name(path=None, _main=sys.modules["__main__"]):
+def _detect_program_name(
+    path: str | None = None, _main: ModuleType | None = None
+) -> str:
     """Determine the command used to run the program, for use in help
     text. If a file or entry point was executed, the file name is
     returned. If ``python -m`` was used to execute a module or package,
@@ -456,13 +543,17 @@ def _detect_program_name(path=None, _main=sys.modules["__main__"]):
 
     :meta private:
     """
+    if _main is None:
+        _main = sys.modules["__main__"]
+
     if not path:
         path = sys.argv[0]
 
     # The value of __package__ indicates how Python was called. It may
     # not exist if a setuptools script is installed as an egg. It may be
     # set incorrectly for entry points created with pip on Windows.
-    if getattr(_main, "__package__", None) is None or (
+    # It is set to "" inside a Shiv or PEX zipapp.
+    if getattr(_main, "__package__", None) in {None, ""} or (
         os.name == "nt"
         and _main.__package__ == ""
         and not os.path.exists(path)
@@ -474,7 +565,7 @@ def _detect_program_name(path=None, _main=sys.modules["__main__"]):
     # Executed a module, like "python -m example".
     # Rewritten by Python from "-m script" to "/path/to/script.py".
     # Need to look at main module to determine how it was executed.
-    py_module = _main.__package__
+    py_module = t.cast(str, _main.__package__)
     name = os.path.splitext(os.path.basename(path))[0]
 
     # A submodule like "example.cli".
@@ -482,3 +573,55 @@ def _detect_program_name(path=None, _main=sys.modules["__main__"]):
         py_module = f"{py_module}.{name}"
 
     return f"python -m {py_module.lstrip('.')}"
+
+
+def _expand_args(
+    args: cabc.Iterable[str],
+    *,
+    user: bool = True,
+    env: bool = True,
+    glob_recursive: bool = True,
+) -> list[str]:
+    """Simulate Unix shell expansion with Python functions.
+
+    See :func:`glob.glob`, :func:`os.path.expanduser`, and
+    :func:`os.path.expandvars`.
+
+    This is intended for use on Windows, where the shell does not do any
+    expansion. It may not exactly match what a Unix shell would do.
+
+    :param args: List of command line arguments to expand.
+    :param user: Expand user home directory.
+    :param env: Expand environment variables.
+    :param glob_recursive: ``**`` matches directories recursively.
+
+    .. versionchanged:: 8.1
+        Invalid glob patterns are treated as empty expansions rather
+        than raising an error.
+
+    .. versionadded:: 8.0
+
+    :meta private:
+    """
+    from glob import glob
+
+    out = []
+
+    for arg in args:
+        if user:
+            arg = os.path.expanduser(arg)
+
+        if env:
+            arg = os.path.expandvars(arg)
+
+        try:
+            matches = glob(arg, recursive=glob_recursive)
+        except re.error:
+            matches = []
+
+        if not matches:
+            out.append(arg)
+        else:
+            out.extend(matches)
+
+    return out
