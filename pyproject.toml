@@ -1,6 +1,6 @@
 [project]
 name = "asyncclick"
-version = "8.2.2"
+version = "8.2.2.1"
 description = "Composable command line interface toolkit, async fork"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -58,7 +58,7 @@ requires = ["flit_core<4"]
 build-backend = "flit_core.buildapi"
 
 [tool.flit.module]
-name = "click"
+name = "asyncclick"
 
 [tool.flit.sdist]
 include = [
@@ -82,7 +82,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 branch = true
-source = ["click", "tests"]
+source = ["asyncclick", "tests"]
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
