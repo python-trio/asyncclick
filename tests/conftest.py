@@ -1,6 +1,6 @@
 import pytest
 
-from click.testing import CliRunner
+from asyncclick.testing import CliRunner
 
 
 @pytest.fixture(scope="function")
