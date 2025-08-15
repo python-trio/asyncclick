@@ -16,6 +16,7 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "colorama; platform_system == 'Windows'",
+    "anyio",
 ]
 
 [project.urls]
