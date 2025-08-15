@@ -45,6 +45,7 @@ dev = [
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
+    { name = "trio" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -67,8 +68,10 @@ pre-commit = [
 tests = [
     { name = "anyio" },
     { name = "pytest" },
+    { name = "trio" },
 ]
 trio = [
+    { name = "anyio" },
     { name = "trio" },
 ]
 typing = [
@@ -87,6 +90,7 @@ dev = [
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
+    { name = "trio" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -104,8 +108,12 @@ pre-commit = [
 tests = [
     { name = "anyio" },
     { name = "pytest" },
+    { name = "trio" },
 ]
-trio = [{ name = "trio" }]
+trio = [
+    { name = "anyio" },
+    { name = "trio" },
+]
 typing = [
     { name = "mypy" },
     { name = "pyright" },
