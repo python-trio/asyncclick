@@ -21,8 +21,6 @@ from inspect import iscoroutine
 from itertools import repeat
 from types import TracebackType
 
-import anyio
-
 from . import types
 from .exceptions import Abort
 from .exceptions import BadParameter
@@ -1508,7 +1506,21 @@ class Command:
             import asyncclick
 
             _anyio_backend = asyncclick.anyio_backend
-        return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
+
+        try:
+            import anyio
+        except ImportError:
+            pass
+        else:
+            return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
+        if _anyio_backend == "trio":
+            import trio
+            return trio.run(self._main, main, args, kwargs)
+        if _anyio_backend == "asyncio":
+            import asyncio
+            return asyncio.run(self._main(main, args, kwargs))
+        raise RuntimeError(f"Backend {_anyio_backend !r} unknown")
+
 
     async def _main(self, main, args, kwargs):
         return await main(*args, **kwargs)
