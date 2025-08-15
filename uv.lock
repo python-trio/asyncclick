@@ -41,6 +41,7 @@ anyio = [
     { name = "anyio" },
 ]
 dev = [
+    { name = "anyio" },
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
@@ -64,6 +65,7 @@ pre-commit = [
     { name = "pre-commit-uv" },
 ]
 tests = [
+    { name = "anyio" },
     { name = "pytest" },
 ]
 trio = [
@@ -81,6 +83,7 @@ requires-dist = [{ name = "colorama", marker = "sys_platform == 'win32'" }]
 [package.metadata.requires-dev]
 anyio = [{ name = "anyio" }]
 dev = [
+    { name = "anyio" },
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
@@ -98,7 +101,10 @@ pre-commit = [
     { name = "pre-commit" },
     { name = "pre-commit-uv" },
 ]
-tests = [{ name = "pytest" }]
+tests = [
+    { name = "anyio" },
+    { name = "pytest" },
+]
 trio = [{ name = "trio" }]
 typing = [
     { name = "mypy" },
