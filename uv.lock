@@ -42,9 +42,11 @@ anyio = [
     { name = "anyio" },
 ]
 dev = [
+    { name = "anyio" },
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
+    { name = "trio" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -66,6 +68,7 @@ pre-commit = [
 tests = [
     { name = "anyio" },
     { name = "pytest" },
+    { name = "trio" },
 ]
 trio = [
     { name = "trio" },
@@ -83,9 +86,11 @@ requires-dist = [{ name = "colorama", marker = "sys_platform == 'win32'" }]
 [package.metadata.requires-dev]
 anyio = [{ name = "anyio", specifier = "~=4.0" }]
 dev = [
+    { name = "anyio" },
     { name = "ruff" },
     { name = "tox" },
     { name = "tox-uv" },
+    { name = "trio" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -103,6 +108,7 @@ pre-commit = [
 tests = [
     { name = "anyio" },
     { name = "pytest" },
+    { name = "trio" },
 ]
 trio = [{ name = "trio", specifier = "~=0.22" }]
 typing = [

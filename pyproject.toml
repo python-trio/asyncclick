@@ -23,6 +23,8 @@ Source = "https://github.com/python-trio/asyncclick/"
 
 [dependency-groups]
 dev = [
+    "anyio",
+    "trio",
     "ruff",
     "tox",
     "tox-uv",
@@ -45,8 +47,9 @@ pre-commit = [
     "pre-commit-uv",
 ]
 tests = [
-    "anyio",
     "pytest",
+    "anyio",
+    "trio",
 ]
 typing = [
     "anyio",
