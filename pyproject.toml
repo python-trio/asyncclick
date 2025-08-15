@@ -15,9 +15,8 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "colorama; platform_system == 'Windows'",
-    "anyio ~= 4.0",
 ]
-version = "8.3.0.1"
+version = "8.3.0.2"
 
 [project.urls]
 Donate = "https://palletsprojects.com/donate"
@@ -50,12 +49,20 @@ pre-commit = [
     "pre-commit-uv",
 ]
 tests = [
+    "anyio",
     "pytest",
 ]
 typing = [
+    "anyio",
     "mypy",
     "pyright",
     "pytest",
+]
+anyio = [
+    "anyio ~= 4.0",
+]
+trio = [
+    "trio ~= 0.22",
 ]
 
 [build-system]

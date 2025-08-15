@@ -20,8 +20,6 @@ from inspect import iscoroutine
 from itertools import repeat
 from types import TracebackType
 
-import anyio
-
 from . import types
 from ._utils import FLAG_NEEDS_VALUE
 from ._utils import UNSET
@@ -1540,16 +1538,31 @@ class Command:
         """
         main = self.main
         opts: dict[str, t.Any] = {}
-        if _anyio_backend:
-            opts["backend"] = _anyio_backend
-        if _anyio_backend_options:
-            opts["backend_options"] = _anyio_backend_options
-        return anyio.run(self.main, main, args, kwargs, **opts)  # type:ignore
+        try:
+            import anyio
+        except ImportError:
+            pass
+        else:
+            if _anyio_backend:
+                opts["backend"] = _anyio_backend
+            if _anyio_backend_options:
+                opts["backend_options"] = _anyio_backend_options
+            return anyio.run(self.main, main, args, kwargs, **opts)  # type:ignore
+
+        if _anyio_backend == "trio":
+            import trio
+
+            return trio.run(self._main, main, args, kwargs)
+        if _anyio_backend == "asyncio":
+            import asyncio
+
+            return asyncio.run(self._main(main, args, kwargs))
+        raise RuntimeError(f"Backend {_anyio_backend!r} unknown")
 
     async def _main(
         self,
         main: t.Callable[..., t.Awaitable[t.Any]],
-        args: list[t.Any],
+        args: t.Sequence[t.Any],
         kwargs: dict[str, t.Any],
     ) -> t.Any:
         return await main(*args, **kwargs)
