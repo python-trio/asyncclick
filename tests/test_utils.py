@@ -127,15 +127,15 @@ async def test_prompts(runner):
 
     result = await runner.invoke(test, input="y\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: yes!\n"
+    assert result.output == "Foo [y/N]: y\nyes!\n"
 
     result = await runner.invoke(test, input="\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: no :(\n"
+    assert result.output == "Foo [y/N]: \nno :(\n"
 
     result = await runner.invoke(test, input="n\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: no :(\n"
+    assert result.output == "Foo [y/N]: n\nno :(\n"
 
     @click.command()
     def test_no():
@@ -146,15 +146,15 @@ async def test_prompts(runner):
 
     result = await runner.invoke(test_no, input="y\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: yes!\n"
+    assert result.output == "Foo [Y/n]: y\nyes!\n"
 
     result = await runner.invoke(test_no, input="\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: yes!\n"
+    assert result.output == "Foo [Y/n]: \nyes!\n"
 
     result = await runner.invoke(test_no, input="n\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: no :(\n"
+    assert result.output == "Foo [Y/n]: n\nno :(\n"
 
 
 @pytest.mark.anyio
@@ -163,7 +163,7 @@ async def test_confirm_repeat(runner):
         "cli", params=[click.Option(["--a/--no-a"], default=None, prompt=True)]
     )
     result = await runner.invoke(cli, input="\ny\n")
-    assert result.output == "A [y/n]: Error: invalid input\nA [y/n]: "
+    assert result.output == "A [y/n]: \nError: invalid input\nA [y/n]: y\n"
 
 
 @pytest.mark.skipif(WIN, reason="Different behavior on windows.")

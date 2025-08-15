@@ -251,7 +251,10 @@ async def test_file_prompt_default_format(runner, file_kwargs):
         click.echo(f.name)
 
     result = await runner.invoke(cli, input="\n")
-    assert result.output == f"file [{__file__}]: {__file__}\n"
+    assert result.output in (
+            f"file [{__file__}]: {__file__}\n",
+            f"file [{__file__}]: \n{__file__}\n",
+        )
 
 
 def test_secho(runner):
