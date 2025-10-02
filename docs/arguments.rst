@@ -3,7 +3,7 @@
 Arguments
 =========
 
-.. currentmodule:: asyncclick
+.. currentmodule:: click
 
 Arguments are:
 

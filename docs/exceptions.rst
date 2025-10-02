@@ -1,7 +1,7 @@
 Exception Handling
 ==================
 
-.. currentmodule:: asyncclick
+.. currentmodule:: click
 
 Click internally uses exceptions to signal various error conditions that
 the user of the application might have caused.  Primarily this is things

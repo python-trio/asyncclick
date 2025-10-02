@@ -1,15 +1,14 @@
 .. rst-class:: hide-header
 
 .. image:: _static/click-logo.png
-
-Welcome to AsyncClick
-=====================
+Welcome to the AsyncClick Documentation
+=======================================
 
 .. image:: _static/click-name.svg
     :align: center
     :height: 200px
 
-AsyncClick ist a fork of Click that works well with (some) async
+AsyncClick is a fork of Click that works well with (some) async
 frameworks. Supported: asyncio, trio, and curio.
 
 Click, in turn, is a Python package for creating beautiful command line interfaces
@@ -21,12 +20,11 @@ It aims to make the process of writing command line tools quick and fun
 while also preventing any frustration caused by the inability to implement
 an intended CLI API.
 
-AsyncClick in four points:
+Click in three points:
 
 -   arbitrary nesting of commands
 -   automatic help page generation
 -   supports lazy loading of subcommands at runtime
--   seamlessly use async-enabled command and subcommand handlers
 
 What does it look like?  Here is an example of a simple Click program:
 
@@ -65,20 +63,7 @@ You can get the library directly from PyPI::
     pip install asyncclick
 
 Documentation
--------------
-
-.. note::
-
-    asyncclick closely tracks click's releases and development.
-    In order to streamline this process, the documentation was changed
-    as lightly as possible. Thus, the author decided not to mangle the
-    text and did not replace ``click`` with ``asyncclick``.
-
-    Please adjust all ``import click`` statements to
-    ``import asyncclick as click``, or apply similar changes, as required.
-
-This part of the documentation guides you through all of the library's
-usage patterns.
+==============
 
 .. toctree::
    :maxdepth: 2

@@ -5,7 +5,6 @@ import contextlib
 import io
 import os
 import shlex
-import shutil
 import sys
 import tempfile
 import typing as t
@@ -21,7 +20,6 @@ if t.TYPE_CHECKING:
     from _typeshed import ReadableBuffer
 
     from .core import Command
-
 
 class EchoingStdin:
     def __init__(self, input: t.BinaryIO, output: t.BinaryIO) -> None:
@@ -128,13 +126,6 @@ class _NamedTextIOWrapper(io.TextIOWrapper):
     def mode(self) -> str:
         return self._mode
 
-    def __next__(self) -> str:  # type: ignore
-        try:
-            line = super().__next__()
-        except StopIteration as e:
-            raise EOFError() from e
-        return line
-
 
 def make_input_stream(
     input: str | bytes | t.IO[t.Any] | None, charset: str
@@ -152,6 +143,7 @@ def make_input_stream(
         input = b""
     elif isinstance(input, str):
         input = input.encode(charset)
+
     return io.BytesIO(input)
 
 
@@ -320,12 +312,10 @@ class CliRunner:
         bytes_input = make_input_stream(input, self.charset)
         echo_input = None
 
+        global o_stdin, o_stdout, o_stderr
         old_stdin = sys.stdin
         old_stdout = sys.stdout
         old_stderr = sys.stderr
-        sys.old_stdin = sys.stdin
-        sys.old_stdout = sys.stdout
-        sys.old_stderr = sys.stderr
         old_forced_width = formatting.FORCED_WIDTH
         formatting.FORCED_WIDTH = 80
 
@@ -338,9 +328,10 @@ class CliRunner:
                 t.BinaryIO, EchoingStdin(bytes_input, stream_mixer.stdout)
             )
 
-        sys.stdin = text_input = _NamedTextIOWrapper(
+        text_input = _NamedTextIOWrapper(
             bytes_input, encoding=self.charset, name="<stdin>", mode="r"
         )
+        sys.stdin = text_input
 
         if self.echo_stdin:
             # Force unbuffered reads, otherwise TextIOWrapper reads a
@@ -362,7 +353,10 @@ class CliRunner:
         @_pause_echo(echo_input)  # type: ignore
         def visible_input(prompt: str | None = None) -> str:
             sys.stdout.write(prompt or "")
-            val = next(text_input).rstrip("\r\n")
+            try:
+                val = next(text_input).rstrip("\r\n")
+            except StopIteration as e:
+                raise EOFError() from e
             sys.stdout.write(f"{val}\n")
             sys.stdout.flush()
             return val
@@ -371,7 +365,10 @@ class CliRunner:
         def hidden_input(prompt: str | None = None) -> str:
             sys.stdout.write(f"{prompt or ''}\n")
             sys.stdout.flush()
-            return next(text_input).rstrip("\r\n")
+            try:
+                return next(text_input).rstrip("\r\n")
+            except StopIteration as e:
+                raise EOFError() from e
 
         @_pause_echo(echo_input)  # type: ignore
         def _getchar(echo: bool) -> str:
@@ -424,12 +421,10 @@ class CliRunner:
                         pass
                 else:
                     os.environ[key] = value
-            sys.stdout = sys.old_stdout
-            sys.stderr = sys.old_stderr
-            sys.stdin = sys.old_stdin
-            sys.old_stdout = old_stdout
-            sys.old_stderr = old_stderr
-            sys.old_stdin = old_stdin
+            global o_stdin, o_stdout, o_stderr
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            sys.stdin = old_stdin
             termui.visible_prompt_func = old_visible_prompt_func
             termui.hidden_prompt_func = old_hidden_prompt_func
             termui._getchar = old__getchar_func
@@ -449,7 +444,7 @@ class CliRunner:
     ) -> Result:
         """Invokes a command in an isolated environment.  The arguments are
         forwarded directly to the command line script, the `extra` keyword
-        arguments are passed to the :meth:`~asyncclickpkg.Command.main` function of
+        arguments are passed to the :meth:`~clickpkg.Command.main` function of
         the command.
 
         This returns a :class:`Result` object.
@@ -508,9 +503,7 @@ class CliRunner:
                 prog_name = self.get_default_prog_name(cli)
 
             try:
-                return_value = await cli.main(
-                    args=args or (), prog_name=prog_name, **extra
-                )
+                return_value = await cli.main(args=args or (), prog_name=prog_name, **extra)
             except SystemExit as e:
                 exc_info = sys.exc_info()
                 e_code = t.cast("int | t.Any | None", e.code)
@@ -578,6 +571,8 @@ class CliRunner:
             os.chdir(cwd)
 
             if temp_dir is None:
+                import shutil
+
                 try:
                     shutil.rmtree(dt)
                 except OSError:

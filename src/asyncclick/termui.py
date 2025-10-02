@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 import collections.abc as cabc
 import inspect
 import io
@@ -8,6 +9,7 @@ import sys
 import typing as t
 from contextlib import AbstractContextManager
 from gettext import gettext as _
+from inspect import iscoroutine
 
 from ._compat import isatty
 from ._compat import strip_ansi
@@ -80,7 +82,7 @@ def _format_default(default: t.Any) -> t.Any:
     return default
 
 
-def prompt(
+async def prompt(
     text: str,
     default: t.Any | None = None,
     hide_input: bool = False,
@@ -91,6 +93,7 @@ def prompt(
     show_default: bool = True,
     err: bool = False,
     show_choices: bool = True,
+    blocking: bool = True,
 ) -> t.Any:
     """Prompts a user for input.  This is a convenience function that can
     be used to prompt a user for input later.
@@ -118,6 +121,17 @@ def prompt(
                          For example if type is a Choice of either day or week,
                          show_choices is true and text is "Group by" then the
                          prompt will be "Group by (day, week): ".
+    :param blocking: if `False`, uses a thread to interact with the terminal.
+                     This keeps the event loop running but may cause interesting
+                     effects when interrupted with Control-C. The default
+                     is `True`, but don't depend on it.
+
+    Warning: The user interaction is run inside a separate thread, because otherwise
+    the call would block the async loop. As a result, behavior when interrupted may be
+    sub-optimal.
+
+    .. versionadded:: 8.3
+        (AsyncClick) ``prompt`` is now async; ``blocking`` parameter added.
 
     .. versionadded:: 8.0
         ``confirmation_prompt`` can be a custom string.
@@ -150,6 +164,13 @@ def prompt(
                 echo(None, err=err)
             raise Abort() from None
 
+    if blocking:
+        async def run_prompt_func(text: str) -> str:
+            return prompt_func(text)
+    else:
+        def run_prompt_func(text: str) -> Awaitable[str]:
+            return anyio.to_thread.run_sync(prompt_func, text)
+
     if value_proc is None:
         value_proc = convert_type(type, default)
 
@@ -165,7 +186,7 @@ def prompt(
 
     while True:
         while True:
-            value = prompt_func(prompt)
+            value = await run_prompt_func(prompt)
             if value:
                 break
             elif default is not None:
@@ -173,6 +194,8 @@ def prompt(
                 break
         try:
             result = value_proc(value)
+            if iscoroutine(result):
+                result = await result
         except UsageError as e:
             if hide_input:
                 echo(_("Error: The value you entered was invalid."), err=err)
@@ -182,7 +205,7 @@ def prompt(
         if not confirmation_prompt:
             return result
         while True:
-            value2 = prompt_func(confirmation_prompt)
+            value2 = await run_prompt_func(confirmation_prompt)
             is_empty = not value and not value2
             if value2 or is_empty:
                 break

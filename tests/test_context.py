@@ -1,6 +1,8 @@
-import logging
 from contextlib import asynccontextmanager
+from contextlib import AbstractContextManager
 from contextlib import contextmanager
+import logging
+from types import TracebackType
 
 import pytest
 
@@ -13,8 +15,7 @@ from asyncclick.decorators import help_option
 from asyncclick.decorators import pass_meta_key
 
 
-@pytest.mark.anyio
-async def test_ensure_context_objects(runner):
+def test_ensure_context_objects(runner):
     class Foo:
         def __init__(self):
             self.title = "default"
@@ -31,13 +32,12 @@ async def test_ensure_context_objects(runner):
     def test(foo):
         click.echo(foo.title)
 
-    result = await runner.invoke(cli, ["test"])
+    result = runner.invoke(cli, ["test"])
     assert not result.exception
     assert result.output == "default\n"
 
 
-@pytest.mark.anyio
-async def test_get_context_objects(runner):
+def test_get_context_objects(runner):
     class Foo:
         def __init__(self):
             self.title = "default"
@@ -55,13 +55,12 @@ async def test_get_context_objects(runner):
     def test(foo):
         click.echo(foo.title)
 
-    result = await runner.invoke(cli, ["test"])
+    result = runner.invoke(cli, ["test"])
     assert not result.exception
     assert result.output == "test\n"
 
 
-@pytest.mark.anyio
-async def test_get_context_objects_no_ensuring(runner):
+def test_get_context_objects_no_ensuring(runner):
     class Foo:
         def __init__(self):
             self.title = "default"
@@ -79,13 +78,12 @@ async def test_get_context_objects_no_ensuring(runner):
     def test(foo):
         click.echo(foo.title)
 
-    result = await runner.invoke(cli, ["test"])
+    result = runner.invoke(cli, ["test"])
     assert not result.exception
     assert result.output == "test\n"
 
 
-@pytest.mark.anyio
-async def test_get_context_objects_missing(runner):
+def test_get_context_objects_missing(runner):
     class Foo:
         pass
 
@@ -101,7 +99,7 @@ async def test_get_context_objects_missing(runner):
     def test(foo):
         click.echo(foo.title)
 
-    result = await runner.invoke(cli, ["test"])
+    result = runner.invoke(cli, ["test"])
     assert result.exception is not None
     assert isinstance(result.exception, RuntimeError)
     assert (
@@ -110,8 +108,7 @@ async def test_get_context_objects_missing(runner):
     )
 
 
-@pytest.mark.anyio
-async def test_multi_enter(runner):
+def test_multi_enter(runner):
     called = []
 
     @click.command()
@@ -126,14 +123,13 @@ async def test_multi_enter(runner):
             pass
         assert not called
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     if result.exception:
         raise result.exception
     assert called == [True]
 
 
-@pytest.mark.anyio
-async def test_global_context_object(runner):
+def test_global_context_object(runner):
     @click.command()
     @click.pass_context
     def cli(ctx):
@@ -142,12 +138,11 @@ async def test_global_context_object(runner):
         assert click.get_current_context().obj == "FOOBAR"
 
     assert click.get_current_context(silent=True) is None
-    await runner.invoke(cli, [], catch_exceptions=False)
+    runner.invoke(cli, [], catch_exceptions=False)
     assert click.get_current_context(silent=True) is None
 
 
-@pytest.mark.anyio
-async def test_context_meta(runner):
+def test_context_meta(runner):
     LANG_KEY = f"{__name__}.lang"
 
     def set_language(value):
@@ -163,11 +158,10 @@ async def test_context_meta(runner):
         set_language("de_DE")
         assert get_language() == "de_DE"
 
-    await runner.invoke(cli, [], catch_exceptions=False)
+    runner.invoke(cli, [], catch_exceptions=False)
 
 
-@pytest.mark.anyio
-async def test_make_pass_meta_decorator(runner):
+def test_make_pass_meta_decorator(runner):
     @click.group()
     @click.pass_context
     def cli(ctx):
@@ -178,7 +172,7 @@ async def test_make_pass_meta_decorator(runner):
     def show(value):
         return value
 
-    result = await runner.invoke(cli, ["show"], standalone_mode=False)
+    result = runner.invoke(cli, ["show"], standalone_mode=False)
     assert result.return_value == "good"
 
 
@@ -217,7 +211,54 @@ async def test_context_pushing():
 
 
 @pytest.mark.anyio
-async def test_pass_obj(runner):
+async def test_async_context_mgr():
+    @asynccontextmanager
+    async def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    @click.command()
+    def cli():
+        pass
+
+    ctx = click.Context(cli)
+
+    async with ctx.scope():
+        rv = await ctx.with_async_resource(manager())
+        assert rv[0] == 1, rv
+
+        # Internal
+        assert ctx._depth == 1
+
+    assert rv == [0], rv
+
+
+@pytest.mark.anyio
+async def test_context_mgr():
+    @contextmanager
+    def manager():
+        val = [1]
+        yield val
+        val[0] = 0
+
+    @click.command()
+    def cli():
+        pass
+
+    ctx = click.Context(cli)
+
+    async with ctx.scope():
+        rv = ctx.with_resource(manager())
+        assert rv[0] == 1, rv
+
+        # Internal
+        assert ctx._depth == 1
+
+    assert rv == [0], rv
+
+
+def test_pass_obj(runner):
     @click.group()
     @click.pass_context
     def cli(ctx):
@@ -228,13 +269,12 @@ async def test_pass_obj(runner):
     def test(obj):
         click.echo(obj)
 
-    result = await runner.invoke(cli, ["test"])
+    result = runner.invoke(cli, ["test"])
     assert not result.exception
     assert result.output == "test\n"
 
 
-@pytest.mark.anyio
-async def test_close_before_pop(runner):
+def test_close_before_pop(runner):
     called = []
 
     @click.command()
@@ -249,7 +289,7 @@ async def test_close_before_pop(runner):
 
         click.echo("aha!")
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert not result.exception
     assert result.output == "aha!\n"
     assert called == [True]
@@ -273,7 +313,31 @@ async def test_close_before_exit(runner):
 
         click.echo("aha!")
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
+    assert not result.exception
+    assert not result.output
+    assert called == [True]
+
+
+@pytest.mark.anyio
+async def test_aclose_before_exit(runner):
+    called = []
+
+    @click.command()
+    @click.pass_context
+    async def cli(ctx):
+        ctx.obj = "test"
+
+        @ctx.call_on_close
+        def foo():
+            assert click.get_current_context().obj == "test"
+            called.append(True)
+
+        await ctx.aexit()
+
+        click.echo("aha!")
+
+    result = runner.invoke(cli, [])
     assert not result.exception
     assert not result.output
     assert called == [True]
@@ -294,8 +358,7 @@ async def test_close_before_exit(runner):
         ),
     ],
 )
-@pytest.mark.anyio
-async def test_multiple_eager_callbacks(runner, cli_args, expect):
+def test_multiple_eager_callbacks(runner, cli_args, expect):
     """Checks all callbacks are called on exit, even the nasty ones hidden within
     callbacks.
 
@@ -329,15 +392,14 @@ async def test_multiple_eager_callbacks(runner, cli_args, expect):
     def cli():
         click.echo("This will never be printed as we forced exit via --force-exit")
 
-    result = await runner.invoke(cli, cli_args)
+    result = runner.invoke(cli, cli_args)
     assert not result.exception
     assert not result.output
 
     assert called == expect
 
 
-@pytest.mark.anyio
-async def test_no_state_leaks(runner):
+def test_no_state_leaks(runner):
     """Demonstrate state leaks with a specific case of the generic test above.
 
     Use a logger as a real-world example of a common fixture which, due to its global
@@ -407,7 +469,7 @@ async def test_no_state_leaks(runner):
         click.echo("This will never be printed as we exited early")
 
     # Call the CLI to mess with the custom logger.
-    result = await runner.invoke(
+    result = runner.invoke(
         messing_with_logger, ["--debug-logger-name", "my_logger", "--help"]
     )
 
@@ -458,7 +520,133 @@ async def test_with_async_resource():
 
 
 @pytest.mark.anyio
-async def test_make_pass_decorator_args(runner):
+async def test_with_resource_exception() -> None:
+    class TestContext(AbstractContextManager[list[int]]):
+        _handle_exception: bool
+        _base_val: int
+        val: list[int]
+
+        def __init__(self, base_val: int = 1, *, handle_exception: bool = True) -> None:
+            self._handle_exception = handle_exception
+            self._base_val = base_val
+
+        def __enter__(self) -> list[int]:
+            self.val = [self._base_val]
+            return self.val
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> bool | None:
+            if not exc_type:
+                self.val[0] = self._base_val - 1
+                return None
+
+            self.val[0] = self._base_val + 1
+            return self._handle_exception
+
+    class TestException(Exception):
+        pass
+
+    ctx = click.Context(click.Command("test"))
+
+    base_val = 1
+
+    async with ctx.scope():
+        rv = ctx.with_resource(TestContext(base_val=base_val))
+        assert rv[0] == base_val
+
+    assert rv == [base_val - 1]
+
+    async with ctx.scope():
+        rv = ctx.with_resource(TestContext(base_val=base_val))
+        raise TestException()
+
+    assert rv == [base_val + 1]
+
+    with pytest.raises(TestException):
+        async with ctx.scope():
+            rv = ctx.with_resource(
+                TestContext(base_val=base_val, handle_exception=False)
+            )
+            raise TestException()
+
+
+@pytest.mark.anyio
+async def test_with_resource_nested_exception() -> None:
+    class TestContext(AbstractContextManager[list[int]]):
+        _handle_exception: bool
+        _base_val: int
+        val: list[int]
+
+        def __init__(self, base_val: int = 1, *, handle_exception: bool = True) -> None:
+            self._handle_exception = handle_exception
+            self._base_val = base_val
+
+        def __enter__(self) -> list[int]:
+            self.val = [self._base_val]
+            return self.val
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            traceback: TracebackType | None,
+        ) -> bool | None:
+            if not exc_type:
+                self.val[0] = self._base_val - 1
+                return None
+
+            self.val[0] = self._base_val + 1
+            return self._handle_exception
+
+    class TestException(Exception):
+        pass
+
+    ctx = click.Context(click.Command("test"))
+    base_val = 1
+    base_val_nested = 11
+
+    async with ctx.scope():
+        rv = ctx.with_resource(TestContext(base_val=base_val))
+        rv_nested = ctx.with_resource(TestContext(base_val=base_val_nested))
+        assert rv[0] == base_val
+        assert rv_nested[0] == base_val_nested
+
+    assert rv == [base_val - 1]
+    assert rv_nested == [base_val_nested - 1]
+
+    async with ctx.scope():
+        rv = ctx.with_resource(TestContext(base_val=base_val))
+        rv_nested = ctx.with_resource(TestContext(base_val=base_val_nested))
+        raise TestException()
+
+    # If one of the context "eats" the exceptions they will not be forwarded to other
+    # parts. This is due to how ExitStack unwinding works
+    assert rv_nested == [base_val_nested + 1]
+    assert rv == [base_val - 1]
+
+    async with ctx.scope():
+        rv = ctx.with_resource(TestContext(base_val=base_val))
+        rv_nested = ctx.with_resource(
+            TestContext(base_val=base_val_nested, handle_exception=False)
+        )
+        raise TestException()
+
+    assert rv_nested == [base_val_nested + 1]
+    assert rv == [base_val + 1]
+
+    with pytest.raises(TestException):
+        rv = ctx.with_resource(TestContext(base_val=base_val, handle_exception=False))
+        rv_nested = ctx.with_resource(
+            TestContext(base_val=base_val_nested, handle_exception=False)
+        )
+        raise TestException()
+
+
+def test_make_pass_decorator_args(runner):
     """
     Test to check that make_pass_decorator doesn't consume arguments based on
     invocation order.
@@ -486,13 +674,27 @@ async def test_make_pass_decorator_args(runner):
     def test2(ctx, foo):
         click.echo(foo.title)
 
-    result = await runner.invoke(cli, ["test1"])
+    result = runner.invoke(cli, ["test1"])
     assert not result.exception
     assert result.output == "foocmd\n"
 
-    result = await runner.invoke(cli, ["test2"])
+    result = runner.invoke(cli, ["test2"])
     assert not result.exception
     assert result.output == "foocmd\n"
+
+
+def test_propagate_show_default_setting(runner):
+    """A context's ``show_default`` setting defaults to the value from
+    the parent context.
+    """
+    group = click.Group(
+        commands={
+            "sub": click.Command("sub", params=[click.Option(["-a"], default="a")]),
+        },
+        context_settings={"show_default": True},
+    )
+    result = runner.invoke(group, ["sub", "--help"])
+    assert "[default: a]" in result.output
 
 
 @pytest.mark.anyio
@@ -548,15 +750,14 @@ async def test_exit_not_standalone():
         ),
     ],
 )
-@pytest.mark.anyio
-async def test_parameter_source(runner, option_args, invoke_args, expect):
+def test_parameter_source(runner, option_args, invoke_args, expect):
     @click.command()
     @click.pass_context
     @click.option("-o", "--option", default=1, **option_args)
     def cli(ctx, option):
         return ctx.get_parameter_source("option")
 
-    rv = await runner.invoke(cli, standalone_mode=False, **invoke_args)
+    rv = runner.invoke(cli, standalone_mode=False, **invoke_args)
     assert rv.return_value == expect
 
 

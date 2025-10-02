@@ -24,7 +24,8 @@ async def test_runner():
 
     runner = CliRunner()
     result = await runner.invoke(test, input="Hello World!\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Hello World!\n"
 
 
@@ -43,7 +44,8 @@ async def test_echo_stdin_stream():
 
     runner = CliRunner(echo_stdin=True)
     result = await runner.invoke(test, input="Hello World!\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Hello World!\nHello World!\n"
 
 
@@ -56,7 +58,8 @@ async def test_echo_stdin_prompts():
 
     runner = CliRunner(echo_stdin=True)
     result = await runner.invoke(test_python_input, input="bar bar\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: bar bar\nfoo=bar bar\n"
 
     @click.command()
@@ -65,7 +68,8 @@ async def test_echo_stdin_prompts():
         click.echo(f"foo={foo}")
 
     result = await runner.invoke(test_prompt, input="bar bar\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: bar bar\nfoo=bar bar\n"
 
     @click.command()
@@ -74,7 +78,8 @@ async def test_echo_stdin_prompts():
         click.echo(f"foo={foo}")
 
     result = await runner.invoke(test_hidden_prompt, input="bar bar\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: \nfoo=bar bar\n"
 
     @click.command()
@@ -84,7 +89,8 @@ async def test_echo_stdin_prompts():
         click.echo(f"foo={foo}, bar={bar}")
 
     result = await runner.invoke(test_multiple_prompts, input="one\ntwo\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: one\nBar: two\nfoo=one, bar=two\n"
 
 
@@ -103,12 +109,14 @@ async def test_runner_with_stream():
 
     runner = CliRunner()
     result = await runner.invoke(test, input=BytesIO(b"Hello World!\n"))
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Hello World!\n"
 
     runner = CliRunner(echo_stdin=True)
     result = await runner.invoke(test, input=BytesIO(b"Hello World!\n"))
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Hello World!\nHello World!\n"
 
 
@@ -121,7 +129,8 @@ async def test_prompts():
 
     runner = CliRunner()
     result = await runner.invoke(test, input="wau wau\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: wau wau\nfoo=wau wau\n"
 
     @click.command()
@@ -131,7 +140,8 @@ async def test_prompts():
 
     runner = CliRunner()
     result = await runner.invoke(test, input="wau wau\n")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "Foo: \nfoo=wau wau\n"
 
 
@@ -143,12 +153,14 @@ async def test_getchar():
 
     runner = CliRunner()
     result = await runner.invoke(continue_it, input="y")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "y\n"
 
     runner = CliRunner(echo_stdin=True)
     result = await runner.invoke(continue_it, input="y")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "y\n"
 
     @click.command()
@@ -157,12 +169,14 @@ async def test_getchar():
 
     runner = CliRunner()
     result = await runner.invoke(getchar_echo, input="y")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "yy\n"
 
     runner = CliRunner(echo_stdin=True)
     result = await runner.invoke(getchar_echo, input="y")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "yy\n"
 
 
@@ -200,7 +214,7 @@ async def test_catch_exceptions_cli_runner():
         pass
 
     @click.command()
-    def cli():
+    async def cli():
         raise CustomError(1)
 
     runner = CliRunner(catch_exceptions=False)
@@ -224,11 +238,13 @@ async def test_with_color():
 
     result = await runner.invoke(cli)
     assert result.output == "hello world\n"
-    assert not result.exception
+    if result.exception:
+        raise result.exception
 
     result = await runner.invoke(cli, color=True)
     assert result.output == f"{click.style('hello world', fg='blue')}\n"
-    assert not result.exception
+    if result.exception:
+        raise result.exception
 
 
 @pytest.mark.anyio
@@ -260,7 +276,8 @@ async def test_with_color_but_pause_not_blocking():
 
     runner = CliRunner()
     result = await runner.invoke(cli, color=True)
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == ""
 
 
@@ -413,7 +430,8 @@ async def test_setting_prog_name_in_extra():
 
     runner = CliRunner()
     result = await runner.invoke(cli, prog_name="foobar")
-    assert not result.exception
+    if result.exception:
+        raise result.exception
     assert result.output == "ok\n"
 
 
@@ -439,7 +457,7 @@ async def test_file_stdin_attrs(runner):
         click.echo(f.name)
         click.echo(f.mode, nl=False)
 
-    result = await runner.invoke(cli, ["-"])
+    result = runner.invoke(cli, ["-"])
     assert result.output == "<stdin>\nr"
 
 

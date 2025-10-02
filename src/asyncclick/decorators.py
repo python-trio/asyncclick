@@ -24,25 +24,6 @@ T = t.TypeVar("T")
 _AnyCallable = t.Callable[..., t.Any]
 FC = t.TypeVar("FC", bound="_AnyCallable | Command")
 
-def async_backend(backend):
-    """Selects the `anyio` backend to use.
-
-    Valid choices are ``trio`` any ``asyncio``. The default is ``truo``.
-
-    This decorator must be occur **before** your main program's
-    ``click.command`` decorator.
-    """
-
-    def wrapper(f):
-        def new_func(*args, **kwargs):
-            if "_anyio_backend" not in kwargs:
-                kwargs["_anyio_backend"] = backend
-            return f(*args, **kwargs)
-
-        return update_wrapper(new_func, f)
-
-    return wrapper
-
 
 def pass_context(f: t.Callable[te.Concatenate[Context, P], R]) -> t.Callable[P, R]:
     """Marks a callback as wanting to receive the current context
@@ -81,9 +62,9 @@ def make_pass_decorator(
 
         def decorator(f):
             @pass_context
-            async def new_func(ctx, *args, **kwargs):
+            def new_func(ctx, *args, **kwargs):
                 obj = ctx.find_object(object_type)
-                return await ctx.invoke(f, obj, *args, **kwargs)
+                return ctx.invoke(f, obj, *args, **kwargs)
             return update_wrapper(new_func, f)
         return decorator
 
@@ -92,8 +73,8 @@ def make_pass_decorator(
                    remembered on the context if it's not there yet.
     """
 
-    def decorator(f: t.Callable[te.Concatenate[T, P], R]) -> t.Callable[P, R]:
-        async def new_func(*args: P.args, **kwargs: P.kwargs) -> R:
+    def decorator(f: t.Callable[te.Concatenate[T, P], R]) -> t.Callable[P, t.Coroutine[t.Any, t.Any, R]]:
+        def new_func(*args: P.args, **kwargs: P.kwargs) -> R:
             ctx = get_current_context()
 
             obj: T | None
@@ -109,7 +90,7 @@ def make_pass_decorator(
                     " existing."
                 )
 
-            return await ctx.invoke(f, obj, *args, **kwargs)
+            return ctx.invoke(f, obj, *args, **kwargs)
 
         return update_wrapper(new_func, f)
 
@@ -131,11 +112,11 @@ def pass_meta_key(
     .. versionadded:: 8.0
     """
 
-    def decorator(f: t.Callable[te.Concatenate[T, P], R]) -> t.Callable[P, R]:
-        async def new_func(*args: P.args, **kwargs: P.kwargs) -> R:
+    def decorator(f: t.Callable[te.Concatenate[T, P], R]) -> t.Callable[P, t.Coroutine[t.Any, t.Any, R]]:
+        def new_func(*args: P.args, **kwargs: P.kwargs) -> t.Coroutine[t.Any, t.Any, R]:
             ctx = get_current_context()
             obj = ctx.meta[key]
-            return await ctx.invoke(f, obj, *args, **kwargs)
+            return ctx.invoke(f, obj, *args, **kwargs)
 
         return update_wrapper(new_func, f)
 

@@ -1,13 +1,11 @@
+# $ asyncclick_
+
+Asyncclick is a fork of Click (described below) that works with trio or asyncio.
+
+AsyncClick allows you to seamlessly use async command and subcommand handlers.
+
+
 <div align="center"><img src="https://raw.githubusercontent.com/pallets/click/refs/heads/stable/docs/_static/click-name.svg" alt="" height="150"></div>
-
-# AsyncClick
-
-[AsyncClick][] is a fork of Click that works well with [anyio][], [Trio][], or [asyncio][].
-
-[anyio]: https://anyio.readthedocs.io/en/stable/
-[Trio]: https://trio.readthedocs.io/en/stable/
-[asyncio]: https://docs.python.org/3/library/asyncio.html
-[AsyncClick]: https://github.com/python-trio/asyncclick/
 
 # Click
 
@@ -20,12 +18,11 @@ It aims to make the process of writing command line tools quick and fun
 while also preventing any frustration caused by the inability to
 implement an intended CLI API.
 
-AsyncClick in four points:
+Click in three points:
 
 -   Arbitrary nesting of commands
 -   Automatic help page generation
 -   Supports lazy loading of subcommands at runtime
--   Seamlessly use async-enabled command and subcommand handlers
 
 
 ## A Simple Example
@@ -39,13 +36,13 @@ import anyio
 @click.option("--name", prompt="Your name", help="The person to greet.")
 async def hello(count, name):
     """Simple program that greets NAME for a total of COUNT times."""
-    for x in range(count):
-        if x:
-            await anyio.sleep(0.1)
+    for _ in range(count):
         click.echo(f"Hello, {name}!")
+        await anyio.sleep(0.2)
 
 if __name__ == '__main__':
     hello()
+    # alternately: anyio.run(hello.main)
 ```
 
 ```
@@ -56,15 +53,28 @@ Hello, Click!
 Hello, Click!
 ```
 
-Compared to the original [Click][], you'll note that AsyncClick supports
-optional(!) sprinkling of `async`/`await` keywords wherever your code needs
-them.
+## Differences to Click
 
-In the interest of not diverging from Click more than absolutely necessary,
-many examples have not been touched.
+This async-ized version of Click is mostly backwards compatible for "normal" use:
+you can freely mix sync and async versions of your command handlers and callbacks.
 
+Several advanced methods, most notably :meth:`BaseCommand.main`, and
+:meth:`Context.invoke`, are now asynchronous.
 
-[Click]: https://palletsprojects.com/p/click/
+The :meth:`BaseCommand.__call__` alias now invokes the main entry point via
+`anyio.run`. If you already have an async main program, simply use
+``await cmd.main()`` instead of ``cmd()``.
+
+:func:`asyncclick.prompt` is asyncronous and accepts a ``blocking`` parameter
+that switches between "doesn't affect your event loop but has unwanted effects when
+interrupted" (bugfix pending) and "pauses your event loop but is safe to interrupt"
+with Control-C". The latter is the default until we fix that bug.
+
+You cannot use Click and AsyncClick in the same program. This is not a problem
+in practice, as replacing ``import click`` with ``import asyncclick as click``, and
+``from click import ...`` with ``from asyncclick import ...``, should be all that's
+required.
+
 
 ## Donate
 
@@ -76,13 +86,29 @@ donate today][].
 [please donate today]: https://palletsprojects.com/donate
 
 The AsyncClick fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
-It's not a lot of work, so if you'd like to motivate me, donate to the
-charity of your choice and tell me that you've done so. ;-)
 
 ## Contributing
+
+### Click
 
 See our [detailed contributing documentation][contrib] for many ways to
 contribute, including reporting issues, requesting features, asking or answering
 questions, and making PRs.
 
 [contrib]: https://palletsprojects.com/contributing/
+
+### AsyncClick
+
+You can file async-specific issues, ideally including a corresponding fix,
+to the [MoaT/asyncclick][moat] repository on github.
+
+[moat]: https://github.com/M-o-a-T/asyncclick
+
+#### Testing
+
+If you find a bug, please add a testcase to prevent it from recurring.
+
+In tests, you might wonder why `runner.invoke` is not called asynchronously.
+The reason is that there are far too many of these calls to modify them all.
+Thus ``tests/conftest.py``  contains a monkeypatch that turns this call
+into a thread that runs this call using `anyio.run`.

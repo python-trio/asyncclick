@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 import collections.abc as cabc
 import enum
 import errno
@@ -9,11 +10,10 @@ import sys
 import typing as t
 from collections import abc
 from collections import Counter
-from contextlib import AbstractContextManager
 from contextlib import asynccontextmanager
-from contextlib import AsyncExitStack
+from contextlib import AbstractContextManager
 from contextlib import contextmanager
-from contextlib import ExitStack
+from contextlib import AsyncExitStack
 from functools import update_wrapper
 from gettext import gettext as _
 from gettext import ngettext
@@ -21,9 +21,9 @@ from inspect import iscoroutine
 from itertools import repeat
 from types import TracebackType
 
-import anyio
-
 from . import types
+from ._utils import FLAG_NEEDS_VALUE
+from ._utils import UNSET
 from .exceptions import Abort
 from .exceptions import BadParameter
 from .exceptions import ClickException
@@ -35,7 +35,6 @@ from .formatting import HelpFormatter
 from .formatting import join_options
 from .globals import pop_context
 from .globals import push_context
-from .parser import _flag_needs_value
 from .parser import _OptionParser
 from .parser import _split_opt
 from .termui import confirm
@@ -456,15 +455,15 @@ class Context:
         )
         return self._protected_args
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> t.Dict[str, t.Any]:
         """Gather information that could be useful for a tool generating
         user-facing documentation. This traverses the entire CLI
         structure.
 
         .. code-block:: python
 
-            async with Context(cli) as ctx:
-                info = await ctx.to_info_dict()
+            with Context(cli) as ctx:
+                info = ctx.to_info_dict()
 
         .. versionadded:: 8.0
         """
@@ -487,14 +486,16 @@ class Context:
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         tb: TracebackType | None,
-    ) -> None:
+    ) -> bool | None:
         self._depth -= 1
+        exit_result: bool | None = None
         if self._depth == 0:
-            await self.aclose()
+            exit_result = await self._aclose_with_exception_info(exc_type, exc_value, tb)
         pop_context()
+        return exit_result
 
     @asynccontextmanager
-    async def scope(self, cleanup: bool = True) -> cabc.Iterator[Context]:
+    async def scope(self, cleanup: bool = True) -> t.AsyncIterator[Context]:
         """This helper method can be used with the context object to promote
         it to the current thread local (see :func:`get_current_context`).
         The default behavior of this is to invoke the cleanup functions which
@@ -560,7 +561,7 @@ class Context:
         return self._meta
 
     def make_formatter(self) -> HelpFormatter:
-        """Creates the :class:`~asyncclick.HelpFormatter` for the help and
+        """Creates the :class:`~click.HelpFormatter` for the help and
         usage output.
 
         To quickly customize the formatter class used without overriding
@@ -578,7 +579,7 @@ class Context:
         statement. The resource will be cleaned up when the context is
         popped.
 
-        Uses :meth:`contextlib.ExitStack.enter_context`. It calls the
+        Uses :meth:`contextlib.AsyncExitStack.enter_context`. It calls the
         resource's ``__enter__()`` method and returns the result. When
         the context is popped, it closes the stack, which calls the
         resource's ``__exit__()`` method.
@@ -602,12 +603,12 @@ class Context:
         """
         return self._exit_stack.enter_context(context_manager)
 
-    async def with_async_resource(self, context_manager):
+    def with_async_resource(self, context_manager: t.AsyncContextManager[V]) -> "t.Awaitable[V]":
         """Register a resource as if it were used in an ``async with``
         statement. The resource will be cleaned up when the context is
         popped.
 
-        Uses :meth:`contextlib.ExitStack.enter_async_context`. It calls the
+        Uses :meth:`contextlib.AsyncExitStack.enter_async_context`. It calls the
         resource's ``__aenter__()`` method and returns the result. When
         the context is popped, it closes the stack, which calls the
         resource's ``__aexit__()`` method.
@@ -625,11 +626,11 @@ class Context:
                 ctx.obj = ctx.with_resource(connect_db(name))
 
         :param context_manager: The context manager to enter.
-        :return: Whatever ``context_manager.__enter__()`` returns.
+        :return: Whatever ``context_manager.__aenter__()`` returns.
 
         .. versionadded:: 8.0
         """
-        return await self._exit_stack.enter_async_context(context_manager)
+        return self._exit_stack.enter_async_context(context_manager)
 
     def call_on_close(self, f: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
         """Register a function to be called when the context tears down.
@@ -641,13 +642,12 @@ class Context:
 
         :param f: The function to execute on teardown.
         """
-
-        async def wrapper():
-            rv = f()
-            if iscoroutine(rv):
-                rv = await rv
-
-        return self._exit_stack.push_async_callback(wrapper)
+        async def _f():
+            res = f()
+            if iscoroutine(res):
+                res = await res
+            return res
+        return self._exit_stack.push_async_callback(_f)
 
     async def aclose(self) -> None:
         """Invoke all close callbacks registered with
@@ -655,8 +655,25 @@ class Context:
         with :meth:`with_resource`.
         """
         await self._exit_stack.aclose()
+        await self._aclose_with_exception_info(None, None, None)
+
+    async def _aclose_with_exception_info(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
+        """Unwind the exit stack by calling its :meth:`__exit__` providing the exception
+        information to allow for exception handling by the various resources registered
+        using :meth;`with_resource`
+
+        :return: Whatever ``exit_stack.__exit__()`` returns.
+        """
+        exit_result = await t.cast(t.AsyncContextManager[t.Any], self._exit_stack).__aexit__(exc_type, exc_value, tb)
         # In case the context is reused, create a new exit stack.
         self._exit_stack = AsyncExitStack()
+
+        return exit_result
 
     @property
     def command_path(self) -> str:
@@ -726,14 +743,14 @@ class Context:
             Added the ``call`` parameter.
         """
         if self.default_map is not None:
-            value = self.default_map.get(name)
+            value = self.default_map.get(name, UNSET)
 
             if call and callable(value):
                 return value()
 
             return value
 
-        return None
+        return UNSET
 
     def fail(self, message: str) -> t.NoReturn:
         """Aborts the execution of the program with a specific error
@@ -746,27 +763,6 @@ class Context:
     def abort(self) -> t.NoReturn:
         """Aborts the script."""
         raise Abort()
-
-    def exit(self, code: int = 0) -> t.NoReturn:
-        """Exits the application with a given exit code.
-
-        .. versionchanged:: 8.2
-            Callbacks and context managers registered with :meth:`call_on_close`
-            and :meth:`with_resource` are closed before exiting.
-
-        .. versionchanged:: asyncclick
-            Please use :meth:`aexit` instead.
-        """
-        # self.close()
-        import warnings
-        warnings.warn(
-            (
-                f"'exit(code)' does not close our resources properly."
-                "Use 'await aexit(code)' instead."
-            ),
-            stacklevel=1,
-        )
-        raise Exit(code)
 
     async def aexit(self, code: int = 0) -> t.NoReturn:
         """Exits the application with a given exit code.
@@ -800,14 +796,14 @@ class Context:
 
     @t.overload
     async def invoke(
-        self, callback: t.Callable[..., V], /, *args: t.Any, **kwargs: t.Any
+        self, callback: t.Callable[..., V|Awaitable[V]], /, *args: t.Any, **kwargs: t.Any
     ) -> V: ...
 
     @t.overload
     async def invoke(self, callback: Command, /, *args: t.Any, **kwargs: t.Any) -> t.Any: ...
 
     async def invoke(
-        self, callback: Command | t.Callable[..., V], /, *args: t.Any, **kwargs: t.Any
+        self, callback: Command | t.Callable[..., V|Awaitable[V]], /, *args: t.Any, **kwargs: t.Any
     ) -> t.Any | V:
         """Invokes a command callback in exactly the way it expects.  There
         are two ways to invoke this method:
@@ -881,7 +877,7 @@ class Context:
         from which the value of the parameter was obtained.
 
         :param name: The name of the parameter.
-        :param source: A member of :class:`~asyncclick.core.ParameterSource`.
+        :param source: A member of :class:`~click.core.ParameterSource`.
         """
         self._parameter_source[name] = source
 
@@ -891,7 +887,7 @@ class Context:
 
         This can be useful for determining when a user specified a value
         on the command line that is the same as the default value. It
-        will be :attr:`~asyncclick.core.ParameterSource.DEFAULT` only if the
+        will be :attr:`~click.core.ParameterSource.DEFAULT` only if the
         value was actually taken from the default.
 
         :param name: The name of the parameter.
@@ -1013,7 +1009,7 @@ class Command:
     async def to_info_dict(self, ctx: Context) -> dict[str, t.Any]:
         return {
             "name": self.name,
-            "params": [(await param.to_info_dict()) for param in self.get_params(ctx)],
+            "params": [await param.to_info_dict() for param in self.get_params(ctx)],
             "help": self.help,
             "epilog": self.epilog,
             "short_help": self.short_help,
@@ -1258,7 +1254,7 @@ class Command:
         opts, args, param_order = await parser.parse_args(args=args)
 
         for param in iter_params_for_processing(param_order, self.get_params(ctx)):
-            value, args = await param.handle_parse_result(ctx, opts, args)
+            _, args = await param.handle_parse_result(ctx, opts, args)
 
         if args and not ctx.allow_extra_args and not ctx.resilient_parsing:
             ctx.fail(
@@ -1301,7 +1297,7 @@ class Command:
 
         .. versionadded:: 8.0
         """
-        from asyncclick.shell_completion import CompletionItem
+        from .shell_completion import CompletionItem
 
         results: list[CompletionItem] = []
 
@@ -1427,7 +1423,7 @@ class Command:
                     rv = await self.invoke(ctx)
                     if not standalone_mode:
                         return rv
-                    # it's not safe to `ctx.exit(rv)` here!
+                    # it's not safe to `ctx.aexit(rv)` here!
                     # note that `rv` may actually contain data like "1" which
                     # has obvious effects
                     # more subtle case: `rv=[None, None]` can come out of
@@ -1460,7 +1456,7 @@ class Command:
                 # would return its result
                 # the results of non-standalone execution may therefore be
                 # somewhat ambiguous: if there are codepaths which lead to
-                # `ctx.exit(1)` and to `return 1`, the caller won't be able to
+                # `ctx.aexit(1)` and to `return 1`, the caller won't be able to
                 # tell the difference between the two
                 return e.exit_code
         except Abort:
@@ -1501,16 +1497,28 @@ class Command:
         rv = await shell_complete(self, ctx_args, prog_name, complete_var, instruction)
         sys.exit(rv)
 
-    def __call__(self, *args: t.Any, _anyio_backend=None, **kwargs: t.Any) -> t.Any:
-        """Alias for :meth:`main`."""
+    def __call__(self, *args: t.Any, _anyio_backend: t.Optional[str] = None, _anyio_backend_options: t.Dict[str, t.Any] = {}, **kwargs: t.Any) -> t.Any:
+        """Calling the command runs it in a new :mod:`anyio` event loop.
+
+        If you are already inside an async event loop, call
+        ``await`` :meth:`main` instead.
+
+        :param _anyio_backend: The backend to use for the event loop.
+        :param _anyio_backend_options: Any options to pass to the backend.
+
+        The parameters are used as the ``backend`` and ``backend_options``
+        arguments to :func:`anyio.run`, respectively.
+
+        """
         main = self.main
-        if _anyio_backend is None:
-            import asyncclick
+        opts:t.Dict[str, t.Any] = {}
+        if _anyio_backend:
+            opts["backend"] = _anyio_backend
+        if _anyio_backend_options:
+            opts["backend_options"] = _anyio_backend_options
+        return anyio.run(self._main, main, args, kwargs, **opts)
 
-            _anyio_backend = asyncclick.anyio_backend
-        return anyio.run(self._main, main, args, kwargs, backend=_anyio_backend)
-
-    async def _main(self, main, args, kwargs):
+    async def _main(self, main:t.Callable[..., t.Awaitable[V]], args: t.List[t.Any], kwargs: t.Dict[str, t.Any]) -> V:
         return await main(*args, **kwargs)
 
 
@@ -1531,6 +1539,30 @@ class _BaseCommand(Command, metaclass=_FakeSubclassCheck):
 
 class Group(Command):
     """A group is a command that nests other commands (or more groups).
+
+    :param name: The name of the group command.
+    :param commands: Map names to :class:`Command` objects. Can be a list, which
+        will use :attr:`Command.name` as the keys.
+    :param invoke_without_command: Invoke the group's callback even if a
+        subcommand is not given.
+    :param no_args_is_help: If no arguments are given, show the group's help and
+        exit. Defaults to the opposite of ``invoke_without_command``.
+    :param subcommand_metavar: How to represent the subcommand argument in help.
+        The default will represent whether ``chain`` is set or not.
+    :param chain: Allow passing more than one subcommand argument. After parsing
+        a command's arguments, if any arguments remain another command will be
+        matched, and so on.
+    :param result_callback: A function to call after the group's and
+        subcommand's callbacks. The value returned by the subcommand is passed.
+        If ``chain`` is enabled, the value will be a list of values returned by
+        all the commands. If ``invoke_without_command`` is enabled, the value
+        will be the value returned by the group's callback, or an empty list if
+        ``chain`` is enabled.
+    :param kwargs: Other arguments passed to :class:`Command`.
+
+    .. versionchanged:: 8.0
+        The ``commands`` argument can be a list of command objects.
+
     .. versionchanged:: 8.2
         Merged with and replaces the ``MultiCommand`` base class.
     """
@@ -1946,7 +1978,7 @@ class Group(Command):
 
         .. versionadded:: 8.0
         """
-        from asyncclick.shell_completion import CompletionItem
+        from .shell_completion import CompletionItem
 
         results = [
             CompletionItem(name, help=command.get_short_help_str())
@@ -2063,12 +2095,13 @@ class Parameter:
     :param is_eager: eager values are processed before non eager ones.  This
                      should not be set for arguments or it will inverse the
                      order of processing.
-    :param envvar: a string or list of strings that are environment variables
-                   that should be checked.
+    :param envvar: environment variable(s) that are used to provide a default value for
+        this parameter. This can be a string or a sequence of strings. If a sequence is
+        given, only the first non-empty environment variable is used for the parameter.
     :param shell_complete: A function that returns custom shell
         completions. Used instead of the param's type completion if
         given. Takes ``ctx, param, incomplete`` and must return a list
-        of :class:`~asyncclick.shell_completion.CompletionItem` or a list of
+        of :class:`~click.shell_completion.CompletionItem` or a list of
         strings.
     :param deprecated: If ``True`` or non-empty string, issues a message
                         indicating that the argument is deprecated and highlights
@@ -2126,7 +2159,17 @@ class Parameter:
         param_decls: cabc.Sequence[str] | None = None,
         type: types.ParamType | t.Any | None = None,
         required: bool = False,
-        default: t.Any | t.Callable[[], t.Any] | None = None,
+        # XXX The default historically embed two concepts:
+        # - the declaration of a Parameter object carrying the default (handy to
+        #   arbitrage the default value of coupled Parameters sharing the same
+        #   self.name, like flag options),
+        # - and the actual value of the default.
+        # It is confusing and is the source of many issues discussed in:
+        # https://github.com/pallets/click/pull/3030
+        # In the future, we might think of splitting it in two, not unlike
+        # Option.is_flag and Option.flag_value: we could have something like
+        # Parameter.is_default and Parameter.default_value.
+        default: t.Any | t.Callable[[], t.Any] | None = UNSET,
         callback: t.Callable[[Context, Parameter, t.Any], t.Any] | None = None,
         nargs: int | None = None,
         multiple: bool = False,
@@ -2175,40 +2218,6 @@ class Parameter:
                     f" type {self.type!r}, but it was {nargs}."
                 )
 
-            # Skip no default or callable default.
-            check_default = default if not callable(default) else None
-
-            if check_default is not None:
-                if multiple:
-                    try:
-                        # Only check the first value against nargs.
-                        check_default = next(_check_iter(check_default), None)
-                    except TypeError:
-                        raise ValueError(
-                            "'default' must be a list when 'multiple' is true."
-                        ) from None
-
-                # Can be None for multiple with empty default.
-                if nargs != 1 and check_default is not None:
-                    try:
-                        _check_iter(check_default)
-                    except TypeError:
-                        if multiple:
-                            message = (
-                                "'default' must be a list of lists when 'multiple' is"
-                                " true and 'nargs' != 1."
-                            )
-                        else:
-                            message = "'default' must be a list when 'nargs' != 1."
-
-                        raise ValueError(message) from None
-
-                    if nargs > 1 and len(check_default) != nargs:
-                        subject = "item length" if multiple else "length"
-                        raise ValueError(
-                            f"'default' {subject} must match nargs={nargs}."
-                        )
-
             if required and deprecated:
                 raise ValueError(
                     f"The {self.param_type_name} '{self.human_readable_name}' "
@@ -2223,6 +2232,9 @@ class Parameter:
         Use :meth:`click.Context.to_info_dict` to traverse the entire
         CLI structure.
 
+        .. versionchanged:: 8.3.0
+            Returns ``None`` for the :attr:`default` if it was not set.
+
         .. versionadded:: 8.0
         """
         return {
@@ -2234,7 +2246,10 @@ class Parameter:
             "required": self.required,
             "nargs": self.nargs,
             "multiple": self.multiple,
-            "default": self.default,
+            # We explicitly hide the :attr:`UNSET` value to the user, as we choose to
+            # make it an implementation detail. And because ``to_info_dict`` has been
+            # designed for documentation purposes, we return ``None`` instead.
+            "default": self.default if self.default is not UNSET else None,
             "envvar": self.envvar,
         }
 
@@ -2302,7 +2317,7 @@ class Parameter:
         """
         value = ctx.lookup_default(self.name, call=False)  # type: ignore
 
-        if value is None:
+        if value is UNSET:
             value = self.default
 
         if call and callable(value):
@@ -2313,32 +2328,58 @@ class Parameter:
     def add_to_parser(self, parser: _OptionParser, ctx: Context) -> None:
         raise NotImplementedError()
 
-    def consume_value(
+    async def consume_value(
         self, ctx: Context, opts: cabc.Mapping[str, t.Any]
     ) -> tuple[t.Any, ParameterSource]:
-        value = opts.get(self.name)  # type: ignore
-        source = ParameterSource.COMMANDLINE
+        """Returns the parameter value produced by the parser.
 
-        if value is None:
-            value = self.value_from_envvar(ctx)
-            source = ParameterSource.ENVIRONMENT
+        If the parser did not produce a value from user input, the value is either
+        sourced from the environment variable, the default map, or the parameter's
+        default value. In that order of precedence.
 
-        if value is None:
-            value = ctx.lookup_default(self.name)  # type: ignore
-            source = ParameterSource.DEFAULT_MAP
+        If no value is found, an internal sentinel value is returned.
 
-        if value is None:
-            value = self.get_default(ctx)
-            source = ParameterSource.DEFAULT
+        :meta private:
+        """
+        # Collect from the parse the value passed by the user to the CLI.
+        value = opts.get(self.name, UNSET)  # type: ignore
+        # If the value is set, it means it was sourced from the command line by the
+        # parser, otherwise it left unset by default.
+        source = (
+            ParameterSource.COMMANDLINE
+            if value is not UNSET
+            else ParameterSource.DEFAULT
+        )
+
+        if value is UNSET:
+            envvar_value = self.value_from_envvar(ctx)
+            if envvar_value is not None:
+                value = envvar_value
+                source = ParameterSource.ENVIRONMENT
+
+        if value is UNSET:
+            default_map_value = ctx.lookup_default(self.name)  # type: ignore
+            if default_map_value is not UNSET:
+                value = default_map_value
+                source = ParameterSource.DEFAULT_MAP
+
+        if value is UNSET:
+            default_value = self.get_default(ctx)
+            if default_value is not UNSET:
+                value = default_value
+                source = ParameterSource.DEFAULT
 
         return value, source
 
     def type_cast_value(self, ctx: Context, value: t.Any) -> t.Any:
-        """Convert and validate a value against the option's
+        """Convert and validate a value against the parameter's
         :attr:`type`, :attr:`multiple`, and :attr:`nargs`.
         """
-        if value is None:
-            return () if self.multiple or self.nargs == -1 else None
+        if value in (None, UNSET):
+            if self.multiple or self.nargs == -1:
+                return ()
+            else:
+                return value
 
         def check_iter(value: t.Any) -> cabc.Iterator[t.Any]:
             try:
@@ -2350,6 +2391,8 @@ class Parameter:
                 raise BadParameter(
                     _("Value must be an iterable."), ctx=ctx, param=self
                 ) from None
+
+        # Define the conversion function based on nargs and type.
 
         if self.nargs == 1 or self.type.is_composite:
 
@@ -2385,7 +2428,16 @@ class Parameter:
         return convert(value)
 
     def value_is_missing(self, value: t.Any) -> bool:
-        if value is None:
+        """A value is considered missing if:
+
+        - it is :attr:`UNSET`,
+        - or if it is an empty sequence while the parameter is suppose to have
+          non-single value (i.e. :attr:`nargs` is not ``1`` or :attr:`multiple` is
+          set).
+
+        :meta private:
+        """
+        if value is UNSET:
             return True
 
         if (self.nargs != 1 or self.multiple) and value == ():
@@ -2393,19 +2445,61 @@ class Parameter:
 
         return False
 
-    def process_value(self, ctx: Context, value: t.Any) -> t.Any:
+    async def process_value(self, ctx: Context, value: t.Any) -> t.Any:
+        """Process the value of this parameter:
+
+        1. Type cast the value using :meth:`type_cast_value`.
+        2. Check if the value is missing (see: :meth:`value_is_missing`), and raise
+           :exc:`MissingParameter` if it is required.
+        3. If a :attr:`callback` is set, call it to have the value replaced by the
+           result of the callback. If the value was not set, the callback receive
+           ``None``. This keep the legacy behavior as it was before the introduction of
+           the :attr:`UNSET` sentinel.
+
+        :meta private:
+        """
         value = self.type_cast_value(ctx, value)
 
         if self.required and self.value_is_missing(value):
             raise MissingParameter(ctx=ctx, param=self)
 
         if self.callback is not None:
+            # Legacy case: UNSET is not exposed directly to the callback, but converted
+            # to None.
+            if value is UNSET:
+                value = None
             value = self.callback(ctx, self, value)
+            if iscoroutine(value):
+                value = await value
 
         return value
 
     def resolve_envvar_value(self, ctx: Context) -> str | None:
-        if self.envvar is None:
+        """Returns the value found in the environment variable(s) attached to this
+        parameter.
+
+        Environment variables values are `always returned as strings
+        <https://docs.python.org/3/library/os.html#os.environ>`_.
+
+        This method returns ``None`` if:
+
+        - the :attr:`envvar` property is not set on the :class:`Parameter`,
+        - the environment variable is not found in the environment,
+        - the variable is found in the environment but its value is empty (i.e. the
+          environment variable is present but has an empty string).
+
+        If :attr:`envvar` is setup with multiple environment variables,
+        then only the first non-empty value is returned.
+
+        .. caution::
+
+            The raw value extracted from the environment is not normalized and is
+            returned as-is. Any normalization or reconciliation is performed later by
+            the :class:`Parameter`'s :attr:`type`.
+
+        :meta private:
+        """
+        if not self.envvar:
             return None
 
         if isinstance(self.envvar, str):
@@ -2417,33 +2511,54 @@ class Parameter:
             for envvar in self.envvar:
                 rv = os.environ.get(envvar)
 
+                # Return the first non-empty value of the list of environment variables.
                 if rv:
                     return rv
+                # Else, absence of value is interpreted as an environment variable that
+                # is not set, so proceed to the next one.
 
         return None
 
-    def value_from_envvar(self, ctx: Context) -> t.Any | None:
-        rv: t.Any | None = self.resolve_envvar_value(ctx)
+    def value_from_envvar(self, ctx: Context) -> str | cabc.Sequence[str] | None:
+        """Process the raw environment variable string for this parameter.
+
+        Returns the string as-is or splits it into a sequence of strings if the
+        parameter is expecting multiple values (i.e. its :attr:`nargs` property is set
+        to a value other than ``1``).
+
+        :meta private:
+        """
+        rv = self.resolve_envvar_value(ctx)
 
         if rv is not None and self.nargs != 1:
-            rv = self.type.split_envvar_value(rv)
+            return self.type.split_envvar_value(rv)
 
         return rv
 
     async def handle_parse_result(
         self, ctx: Context, opts: cabc.Mapping[str, t.Any], args: list[str]
     ) -> tuple[t.Any, list[str]]:
-        with augment_usage_errors(ctx, param=self):
-            value, source = self.consume_value(ctx, opts)
+        """Process the value produced by the parser from user input.
 
+        Always process the value through the Parameter's :attr:`type`, wherever it
+        comes from.
+
+        If the parameter is deprecated, this method warn the user about it. But only if
+        the value has been explicitly set by the user (and as such, is not coming from
+        a default).
+
+        :meta private:
+        """
+        with augment_usage_errors(ctx, param=self):
+            value, source = await self.consume_value(ctx, opts)
+
+            ctx.set_parameter_source(self.name, source)  # type: ignore
+
+            # Display a deprecation warning if necessary.
             if (
                 self.deprecated
-                and value is not None
-                and source
-                not in (
-                    ParameterSource.DEFAULT,
-                    ParameterSource.DEFAULT_MAP,
-                )
+                and value is not UNSET
+                and source not in (ParameterSource.DEFAULT, ParameterSource.DEFAULT_MAP)
             ):
                 extra_message = (
                     f" {self.deprecated}" if isinstance(self.deprecated, str) else ""
@@ -2458,20 +2573,34 @@ class Parameter:
                 )
                 echo(style(message, fg="red"), err=True)
 
-            ctx.set_parameter_source(self.name, source)  # type: ignore
-
+            # Process the value through the parameter's type.
             try:
-                value = self.process_value(ctx, value)
-                if iscoroutine(value):
-                    value = await value
+                value = await self.process_value(ctx, value)
             except Exception:
                 if not ctx.resilient_parsing:
                     raise
+                # In resilient parsing mode, we do not want to fail the command if the
+                # value is incompatible with the parameter type, so we reset the value
+                # to UNSET, which will be interpreted as a missing value.
+                value = UNSET
 
-                value = None
-
-        if self.expose_value:
-            ctx.params[self.name] = value  # type: ignore
+        # Add parameter's value to the context.
+        if (
+            self.expose_value
+            # We skip adding the value if it was previously set by another parameter
+            # targeting the same variable name. This prevents parameters competing for
+            # the same name to override each other.
+            and self.name not in ctx.params
+        ):
+            # Click is logically enforcing that the name is None if the parameter is
+            # not to be exposed. We still assert it here to please the type checker.
+            assert self.name is not None, (
+                f"{self!r} parameter's name should not be None when exposing value."
+            )
+            # Normalize UNSET values to None, as we're about to pass them to the
+            # command function and move them to the pure-Python realm of user-written
+            # code.
+            ctx.params[self.name] = value if value is not UNSET else None
 
         return value, args
 
@@ -2492,7 +2621,7 @@ class Parameter:
         """Return a list of completions for the incomplete value. If a
         ``shell_complete`` function was given during init, it is used.
         Otherwise, the :attr:`type`
-        :meth:`~asyncclick.types.ParamType.shell_complete` function is used.
+        :meth:`~click.types.ParamType.shell_complete` function is used.
 
         :param ctx: Invocation context for this command.
         :param incomplete: Value being completed. May be empty.
@@ -2503,7 +2632,7 @@ class Parameter:
             results = self._custom_shell_complete(ctx, self, incomplete)
 
             if results and isinstance(results[0], str):
-                from asyncclick.shell_completion import CompletionItem
+                from .shell_completion import CompletionItem
 
                 results = [CompletionItem(c) for c in results]
 
@@ -2589,7 +2718,7 @@ class Option(Parameter):
         prompt_required: bool = True,
         hide_input: bool = False,
         is_flag: bool | None = None,
-        flag_value: t.Any | None = None,
+        flag_value: t.Any = UNSET,
         multiple: bool = False,
         count: bool = False,
         allow_from_autoenv: bool = True,
@@ -2632,46 +2761,47 @@ class Option(Parameter):
         self.hide_input = hide_input
         self.hidden = hidden
 
-        # If prompt is enabled but not required, then the option can be
-        # used as a flag to indicate using prompt or flag_value.
+        # The _flag_needs_value property tells the parser that this option is a flag
+        # that cannot be used standalone and needs a value. With this information, the
+        # parser can determine whether to consider the next user-provided argument in
+        # the CLI as a value for this flag or as a new option.
+        # If prompt is enabled but not required, then it opens the possibility for the
+        # option to gets its value from the user.
         self._flag_needs_value = self.prompt is not None and not self.prompt_required
 
+        # Auto-detect if this is a flag or not.
         if is_flag is None:
             # Implicitly a flag because flag_value was set.
-            if flag_value is not None:
+            if flag_value is not UNSET:
                 is_flag = True
             # Not a flag, but when used as a flag it shows a prompt.
             elif self._flag_needs_value:
                 is_flag = False
-            # Implicitly a flag because flag options were given.
+            # Implicitly a flag because secondary options names were given.
             elif self.secondary_opts:
                 is_flag = True
+        # The option is explicitly not a flag. But we do not know yet if it needs a
+        # value or not. So we look at the default value to determine it.
         elif is_flag is False and not self._flag_needs_value:
-            # Not a flag, and prompt is not enabled, can be used as a
-            # flag if flag_value is set.
-            self._flag_needs_value = flag_value is not None
-
-        self.default: t.Any | t.Callable[[], t.Any]
+            self._flag_needs_value = self.default is UNSET
 
         if is_flag:
             # Set missing default for flags if not explicitly required or prompted.
-            if self.default is None and not self.required and not self.prompt:
+            if self.default is UNSET and not self.required and not self.prompt:
                 if multiple:
                     self.default = ()
+
+            # Auto-detect the type of the flag based on the flag_value.
+            if type is None:
+                # A flag without a flag_value is a boolean flag.
+                if flag_value is UNSET:
+                    self.type = types.BoolParamType()
+                # If the flag value is a boolean, use BoolParamType.
+                elif isinstance(flag_value, bool):
+                    self.type = types.BoolParamType()
+                # Otherwise, guess the type from the flag value.
                 else:
-                    self.default = False
-
-            if flag_value is None:
-                # A boolean flag presence in the command line is enough to set
-                # the value: to the default if it is not blank, or to True
-                # otherwise.
-                flag_value = self.default if self.default else True
-
-        self.type: types.ParamType
-        if is_flag and type is None:
-            # Re-guess the type from the flag value instead of the
-            # default.
-            self.type = types.convert_type(None, flag_value)
+                    self.type = types.convert_type(None, flag_value)
 
         self.is_flag: bool = bool(is_flag)
         self.is_bool_flag: bool = bool(
@@ -2679,12 +2809,33 @@ class Option(Parameter):
         )
         self.flag_value: t.Any = flag_value
 
-        # Counting
+        # Set boolean flag default to False if unset and not required.
+        if self.is_bool_flag:
+            if self.default is UNSET and not self.required:
+                self.default = False
+
+        # Support the special case of aligning the default value with the flag_value
+        # for flags whose default is explicitly set to True. Note that as long as we
+        # have this condition, there is no way a flag can have a default set to True,
+        # and a flag_value set to something else. Refs:
+        # https://github.com/pallets/click/issues/3024#issuecomment-3146199461
+        # https://github.com/pallets/click/pull/3030/commits/06847da
+        if self.default is True and self.flag_value is not UNSET:
+            self.default = self.flag_value
+
+        # Set the default flag_value if it is not set.
+        if self.flag_value is UNSET:
+            if self.is_flag:
+                self.flag_value = True
+            else:
+                self.flag_value = None
+
+        # Counting.
         self.count = count
         if count:
             if type is None:
                 self.type = types.IntRange(min=0)
-            if self.default is None:
+            if self.default is UNSET:
                 self.default = 0
 
         self.allow_from_autoenv = allow_from_autoenv
@@ -2699,9 +2850,6 @@ class Option(Parameter):
 
             if self.nargs == -1:
                 raise TypeError("nargs=-1 is not supported for options.")
-
-            if self.prompt and self.is_flag and not self.is_bool_flag:
-                raise TypeError("'prompt' is not valid for non-boolean flag.")
 
             if not self.is_bool_flag and self.secondary_opts:
                 raise TypeError("Secondary flag is not valid for non-boolean flag.")
@@ -2719,12 +2867,19 @@ class Option(Parameter):
                     raise TypeError("'count' is not valid with 'is_flag'.")
 
     async def to_info_dict(self) -> dict[str, t.Any]:
+        """
+        .. versionchanged:: 8.3.0
+            Returns ``None`` for the :attr:`flag_value` if it was not set.
+        """
         info_dict = await super().to_info_dict()
         info_dict.update(
             help=self.help,
             prompt=self.prompt,
             is_flag=self.is_flag,
-            flag_value=self.flag_value,
+            # We explicitly hide the :attr:`UNSET` value to the user, as we choose to
+            # make it an implementation detail. And because ``to_info_dict`` has been
+            # designed for documentation purposes, we return ``None`` instead.
+            flag_value=self.flag_value if self.flag_value is not UNSET else None,
             count=self.count,
             hidden=self.hidden,
         )
@@ -2917,7 +3072,9 @@ class Option(Parameter):
         elif ctx.show_default is not None:
             show_default = ctx.show_default
 
-        if show_default_is_str or (show_default and (default_value is not None)):
+        if show_default_is_str or (
+            show_default and (default_value not in (None, UNSET))
+        ):
             if show_default_is_str:
                 default_string = f"({self.show_default})"
             elif isinstance(default_value, (list, tuple)):
@@ -2957,33 +3114,7 @@ class Option(Parameter):
 
         return extra
 
-    @t.overload
-    def get_default(
-        self, ctx: Context, call: t.Literal[True] = True
-    ) -> t.Any | None: ...
-
-    @t.overload
-    def get_default(
-        self, ctx: Context, call: bool = ...
-    ) -> t.Any | t.Callable[[], t.Any] | None: ...
-
-    def get_default(
-        self, ctx: Context, call: bool = True
-    ) -> t.Any | t.Callable[[], t.Any] | None:
-        # If we're a non boolean flag our default is more complex because
-        # we need to look at all flags in the same group to figure out
-        # if we're the default one in which case we return the flag
-        # value as default.
-        if self.is_flag and not self.is_bool_flag:
-            for param in ctx.command.params:
-                if param.name == self.name and param.default is not None:
-                    return t.cast(Option, param).default
-
-            return None
-
-        return super().get_default(ctx, call=call)
-
-    def prompt_for_value(self, ctx: Context) -> t.Any:
+    async def prompt_for_value(self, ctx: Context) -> t.Any:
         """This is an alternative flow that can be activated in the full
         value processing if a value does not exist.  It will prompt the
         user until a valid value exists and then returns the processed
@@ -2991,12 +3122,27 @@ class Option(Parameter):
         """
         assert self.prompt is not None
 
-        # Calculate the default before prompting anything to be stable.
+        # Calculate the default before prompting anything to lock in the value before
+        # attempting any user interaction.
         default = self.get_default(ctx)
 
-        # If this is a prompt for a flag we need to handle this
-        # differently.
+        # A boolean flag can use a simplified [y/n] confirmation prompt.
         if self.is_bool_flag:
+            # If we have no boolean default, we force the user to explicitly provide
+            # one.
+            if default in (UNSET, None):
+                default = None
+            # Nothing prevent you to declare an option that is simultaneously:
+            # 1) auto-detected as a boolean flag,
+            # 2) allowed to prompt, and
+            # 3) still declare a non-boolean default.
+            # This forced casting into a boolean is necessary to align any non-boolean
+            # default to the prompt, which is going to be a [y/n]-style confirmation
+            # because the option is still a boolean flag. That way, instead of [y/n],
+            # we get [Y/n] or [y/N] depending on the truthy value of the default.
+            # Refs: https://github.com/pallets/click/pull/3030#discussion_r2289180249
+            else:
+                default = bool(default)
             return confirm(self.prompt, default)
 
         # If show_default is set to True/False, provide this to `prompt` as well. For
@@ -3005,9 +3151,11 @@ class Option(Parameter):
         if isinstance(self.show_default, bool):
             prompt_kwargs["show_default"] = self.show_default
 
-        return prompt(
+        return await prompt(
             self.prompt,
-            default=default,
+            # Use ``None`` to inform the prompt() function to reiterate until a valid
+            # value is provided by the user if we have no default.
+            default=None if default is UNSET else default,
             type=self.type,
             hide_input=self.hide_input,
             show_choices=self.show_choices,
@@ -3017,17 +3165,14 @@ class Option(Parameter):
         )
 
     def resolve_envvar_value(self, ctx: Context) -> str | None:
-        """Find which environment variable to read for this option and return
-        its value.
+        """:class:`Option` resolves its environment variable the same way as
+        :func:`Parameter.resolve_envvar_value`, but it also supports
+        :attr:`Context.auto_envvar_prefix`. If we could not find an environment from
+        the :attr:`envvar` property, we fallback on :attr:`Context.auto_envvar_prefix`
+        to build dynamiccaly the environment variable name using the
+        :python:`{ctx.auto_envvar_prefix}_{self.name.upper()}` template.
 
-        Returns the value of the environment variable if it exists, or ``None``
-        if it does not.
-
-        .. caution::
-
-            The raw value extracted from the environment is not normalized and
-            is returned as-is. Any normalization or reconciation with the
-            option's type should happen later.
+        :meta private:
         """
         rv = super().resolve_envvar_value(ctx)
 
@@ -3047,20 +3192,32 @@ class Option(Parameter):
 
         return None
 
-    def value_from_envvar(self, ctx: Context) -> t.Any | None:
-        """Normalize the value from the environment variable, if it exists."""
-        rv: str | None = self.resolve_envvar_value(ctx)
+    def value_from_envvar(self, ctx: Context) -> t.Any:
+        """For :class:`Option`, this method processes the raw environment variable
+        string the same way as :func:`Parameter.value_from_envvar` does.
 
+        But in the case of non-boolean flags, the value is analyzed to determine if the
+        flag is activated or not, and returns a boolean of its activation, or the
+        :attr:`flag_value` if the latter is set.
+
+        This method also takes care of repeated options (i.e. options with
+        :attr:`multiple` set to ``True``).
+
+        :meta private:
+        """
+        rv = self.resolve_envvar_value(ctx)
+
+        # Absent environment variable or an empty string is interpreted as unset.
         if rv is None:
             return None
 
         # Non-boolean flags are more liberal in what they accept. But a flag being a
-        # flag, its envvar value still needs to analyzed to determine if the flag is
+        # flag, its envvar value still needs to be analyzed to determine if the flag is
         # activated or not.
         if self.is_flag and not self.is_bool_flag:
             # If the flag_value is set and match the envvar value, return it
             # directly.
-            if self.flag_value is not None and rv == self.flag_value:
+            if self.flag_value is not UNSET and rv == self.flag_value:
                 return self.flag_value
             # Analyze the envvar value as a boolean to know if the flag is
             # activated or not.
@@ -3077,53 +3234,77 @@ class Option(Parameter):
 
         return rv
 
-    def consume_value(
+    async def consume_value(
         self, ctx: Context, opts: cabc.Mapping[str, Parameter]
     ) -> tuple[t.Any, ParameterSource]:
-        value, source = super().consume_value(ctx, opts)
+        """For :class:`Option`, the value can be collected from an interactive prompt
+        if the option is a flag that needs a value (and the :attr:`prompt` property is
+        set).
 
-        # The parser will emit a sentinel value if the option can be
-        # given as a flag without a value. This is different from None
-        # to distinguish from the flag not being given at all.
-        if value is _flag_needs_value:
+        Additionally, this method handles flag option that are activated without a
+        value, in which case the :attr:`flag_value` is returned.
+
+        :meta private:
+        """
+        value, source = await super().consume_value(ctx, opts)
+
+        # The parser will emit a sentinel value if the option is allowed to as a flag
+        # without a value.
+        if value is FLAG_NEEDS_VALUE:
+            # If the option allows for a prompt, we start an interaction with the user.
             if self.prompt is not None and not ctx.resilient_parsing:
-                value = self.prompt_for_value(ctx)
+                value = await self.prompt_for_value(ctx)
                 source = ParameterSource.PROMPT
+            # Else the flag takes its flag_value as value.
             else:
                 value = self.flag_value
                 source = ParameterSource.COMMANDLINE
 
-        # A flag which is activated and has a flag_value set, should returns
-        # the latter, unless the value comes from the explicitly sets default.
+        # A flag which is activated always returns the flag value, unless the value
+        # comes from the explicitly sets default.
         elif (
             self.is_flag
             and value is True
             and not self.is_bool_flag
-            and self.flag_value is not None
-            and source is not ParameterSource.DEFAULT
+            and source not in (ParameterSource.DEFAULT, ParameterSource.DEFAULT_MAP)
         ):
             value = self.flag_value
 
+        # Re-interpret a multiple option which has been sent as-is by the parser.
+        # Here we replace each occurrence of value-less flags (marked by the
+        # FLAG_NEEDS_VALUE sentinel) with the flag_value.
         elif (
             self.multiple
-            and value is not None
-            and any(v is _flag_needs_value for v in value)
+            and value is not UNSET
+            and source not in (ParameterSource.DEFAULT, ParameterSource.DEFAULT_MAP)
+            and any(v is FLAG_NEEDS_VALUE for v in value)
         ):
-            value = [self.flag_value if v is _flag_needs_value else v for v in value]
+            value = [self.flag_value if v is FLAG_NEEDS_VALUE else v for v in value]
             source = ParameterSource.COMMANDLINE
 
-        # The value wasn't set, or used the param's default, prompt if
-        # prompting is enabled.
+        # The value wasn't set, or used the param's default, prompt for one to the user
+        # if prompting is enabled.
         elif (
-            source in {None, ParameterSource.DEFAULT}
+            (
+                value is UNSET
+                or source in (ParameterSource.DEFAULT, ParameterSource.DEFAULT_MAP)
+            )
             and self.prompt is not None
             and (self.required or self.prompt_required)
             and not ctx.resilient_parsing
         ):
-            value = self.prompt_for_value(ctx)
+            value = await self.prompt_for_value(ctx)
             source = ParameterSource.PROMPT
 
         return value, source
+
+    def type_cast_value(self, ctx: Context, value: t.Any) -> t.Any:
+        if self.is_flag and not self.required:
+            if value is UNSET:
+                if self.is_bool_flag:
+                    # If the flag is a boolean flag, we return False if it is not set.
+                    value = False
+        return super().type_cast_value(ctx, value)
 
 
 class Argument(Parameter):
@@ -3142,20 +3323,20 @@ class Argument(Parameter):
         required: bool | None = None,
         **attrs: t.Any,
     ) -> None:
+        # Auto-detect the requirement status of the argument if not explicitly set.
         if required is None:
-            if attrs.get("default") is not None:
-                required = False
-            else:
+            # The argument gets automatically required if it has no explicit default
+            # value set and is setup to match at least one value.
+            if attrs.get("default", UNSET) is UNSET:
                 required = attrs.get("nargs", 1) > 0
+            # If the argument has a default value, it is not required.
+            else:
+                required = False
 
         if "multiple" in attrs:
             raise TypeError("__init__() got an unexpected keyword argument 'multiple'.")
 
         super().__init__(param_decls, required=required, **attrs)
-
-        if __debug__:
-            if self.default is not None and self.nargs == -1:
-                raise TypeError("'default' is not supported for nargs=-1.")
 
     @property
     def human_readable_name(self) -> str:

@@ -30,19 +30,19 @@ async def _get_words(cli, args, incomplete):
 @pytest.mark.anyio
 async def test_command():
     cli = Command("cli", params=[Option(["-t", "--test"])])
-    assert (await _get_words(cli, [], "")) == []
-    assert (await _get_words(cli, [], "-")) == ["-t", "--test", "--help"]
-    assert (await _get_words(cli, [], "--")) == ["--test", "--help"]
-    assert (await _get_words(cli, [], "--t")) == ["--test"]
+    assert await _get_words(cli, [], "") == []
+    assert await _get_words(cli, [], "-") == ["-t", "--test", "--help"]
+    assert await _get_words(cli, [], "--") == ["--test", "--help"]
+    assert await _get_words(cli, [], "--t") == ["--test"]
     # -t has been seen, so --test isn't suggested
-    assert (await _get_words(cli, ["-t", "a"], "-")) == ["--help"]
+    assert await _get_words(cli, ["-t", "a"], "-") == ["--help"]
 
 
 @pytest.mark.anyio
 async def test_group():
     cli = Group("cli", params=[Option(["-a"])], commands=[Command("x"), Command("y")])
-    assert (await _get_words(cli, [], "")) == ["x", "y"]
-    assert (await _get_words(cli, [], "-")) == ["-a", "--help"]
+    assert await _get_words(cli, [], "") == ["x", "y"]
+    assert await _get_words(cli, [], "-") == ["-a", "--help"]
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ async def test_nested_group(args: list[str], word: str, expect: list[str]) -> No
             )
         ],
     )
-    assert (await _get_words(cli, args, word)) == expect
+    assert await _get_words(cli, args, word) == expect
 
 
 @pytest.mark.anyio
@@ -81,10 +81,10 @@ async def test_group_command_same_option():
     cli = Group(
         "cli", params=[Option(["-a"])], commands=[Command("x", params=[Option(["-a"])])]
     )
-    assert (await _get_words(cli, [], "-")) == ["-a", "--help"]
-    assert (await _get_words(cli, ["-a", "a"], "-")) == ["--help"]
-    assert (await _get_words(cli, ["-a", "a", "x"], "-")) == ["-a", "--help"]
-    assert (await _get_words(cli, ["-a", "a", "x", "-a", "a"], "-")) == ["--help"]
+    assert await _get_words(cli, [], "-") == ["-a", "--help"]
+    assert await _get_words(cli, ["-a", "a"], "-") == ["--help"]
+    assert await _get_words(cli, ["-a", "a", "x"], "-") == ["-a", "--help"]
+    assert await _get_words(cli, ["-a", "a", "x", "-a", "a"], "-") == ["--help"]
 
 
 @pytest.mark.anyio
@@ -98,20 +98,20 @@ async def test_chained():
             Group("get", commands=[Command("full")]),
         ],
     )
-    assert (await _get_words(cli, [], "")) == ["get", "set", "start"]
-    assert (await _get_words(cli, [], "s")) == ["set", "start"]
-    assert (await _get_words(cli, ["set", "start"], "")) == ["get"]
+    assert await _get_words(cli, [], "") == ["get", "set", "start"]
+    assert await _get_words(cli, [], "s") == ["set", "start"]
+    assert await _get_words(cli, ["set", "start"], "") == ["get"]
     # subcommands and parent subcommands
-    assert (await _get_words(cli, ["get"], "")) == ["full", "set", "start"]
-    assert (await _get_words(cli, ["get", "full"], "")) == ["set", "start"]
-    assert (await _get_words(cli, ["get"], "s")) == ["set", "start"]
+    assert await _get_words(cli, ["get"], "") == ["full", "set", "start"]
+    assert await _get_words(cli, ["get", "full"], "") == ["set", "start"]
+    assert await _get_words(cli, ["get"], "s") == ["set", "start"]
 
 
 @pytest.mark.anyio
 async def test_help_option():
     cli = Group("cli", commands=[Command("with"), Command("no", add_help_option=False)])
-    assert (await _get_words(cli, ["with"], "--")) == ["--help"]
-    assert (await _get_words(cli, ["no"], "--")) == []
+    assert await _get_words(cli, ["with"], "--") == ["--help"]
+    assert await _get_words(cli, ["no"], "--") == []
 
 
 @pytest.mark.anyio
@@ -125,11 +125,11 @@ async def test_argument_order():
         ],
     )
     # first argument has no completions
-    assert (await _get_words(cli, [], "")) == []
-    assert (await _get_words(cli, [], "a")) == []
+    assert await _get_words(cli, [], "") == []
+    assert await _get_words(cli, [], "a") == []
     # first argument filled, now completion can happen
-    assert (await _get_words(cli, ["x"], "a")) == ["a1", "a2"]
-    assert (await _get_words(cli, ["x", "b"], "d")) == ["d"]
+    assert await _get_words(cli, ["x"], "a") == ["a1", "a2"]
+    assert await _get_words(cli, ["x", "b"], "d") == ["d"]
 
 
 @pytest.mark.anyio
@@ -142,26 +142,26 @@ async def test_argument_default():
             Argument(["b"], type=Choice(["b"]), default="b"),
         ],
     )
-    assert (await _get_words(cli, [], "")) == ["a"]
-    assert (await _get_words(cli, ["a"], "b")) == ["b"]
+    assert await _get_words(cli, [], "") == ["a"]
+    assert await _get_words(cli, ["a"], "b") == ["b"]
     # ignore type validation
-    assert (await _get_words(cli, ["x"], "b")) == ["b"]
+    assert await _get_words(cli, ["x"], "b") == ["b"]
 
 
 @pytest.mark.anyio
 async def test_type_choice():
     cli = Command("cli", params=[Option(["-c"], type=Choice(["a1", "a2", "b"]))])
-    assert (await _get_words(cli, ["-c"], "")) == ["a1", "a2", "b"]
-    assert (await _get_words(cli, ["-c"], "a")) == ["a1", "a2"]
-    assert (await _get_words(cli, ["-c"], "a2")) == ["a2"]
+    assert await _get_words(cli, ["-c"], "") == ["a1", "a2", "b"]
+    assert await _get_words(cli, ["-c"], "a") == ["a1", "a2"]
+    assert await _get_words(cli, ["-c"], "a2") == ["a2"]
 
 
 @pytest.mark.anyio
 async def test_choice_special_characters():
     cli = Command("cli", params=[Option(["-c"], type=Choice(["!1", "!2", "+3"]))])
-    assert (await _get_words(cli, ["-c"], "")) == ["!1", "!2", "+3"]
-    assert (await _get_words(cli, ["-c"], "!")) == ["!1", "!2"]
-    assert (await _get_words(cli, ["-c"], "!2")) == ["!2"]
+    assert await _get_words(cli, ["-c"], "") == ["!1", "!2", "+3"]
+    assert await _get_words(cli, ["-c"], "!") == ["!1", "!2"]
+    assert await _get_words(cli, ["-c"], "!2") == ["!2"]
 
 
 @pytest.mark.anyio
@@ -173,15 +173,15 @@ async def test_choice_conflicting_prefix():
             Option(["+p"], is_flag=True),
         ],
     )
-    assert (await _get_words(cli, ["-c"], "")) == ["!1", "!2", "+3"]
-    assert (await _get_words(cli, ["-c"], "+")) == ["+p"]
+    assert await _get_words(cli, ["-c"], "") == ["!1", "!2", "+3"]
+    assert await _get_words(cli, ["-c"], "+") == ["+p"]
 
 
 @pytest.mark.anyio
 async def test_option_count():
     cli = Command("cli", params=[Option(["-c"], count=True)])
-    assert (await _get_words(cli, ["-c"], "")) == []
-    assert (await _get_words(cli, ["-c"], "-")) == ["--help"]
+    assert await _get_words(cli, ["-c"], "") == []
+    assert await _get_words(cli, ["-c"], "-") == ["--help"]
 
 
 @pytest.mark.anyio
@@ -194,9 +194,9 @@ async def test_option_optional():
             Option(["--flag"], is_flag=True),
         ],
     )
-    assert (await _get_words(cli, ["--name"], "")) == []
-    assert (await _get_words(cli, ["--name"], "-")) == ["--flag"]
-    assert (await _get_words(cli, ["--name", "--flag"], "-")) == []
+    assert await _get_words(cli, ["--name"], "") == []
+    assert await _get_words(cli, ["--name"], "-") == ["--flag"]
+    assert await _get_words(cli, ["--name", "--flag"], "-") == []
 
 
 @pytest.mark.parametrize(
@@ -232,9 +232,23 @@ async def test_option_flag():
             Argument(["a"], type=Choice(["a1", "a2", "b"])),
         ],
     )
-    assert (await _get_words(cli, [], "--")) == ["--on", "--off"]
+    assert await _get_words(cli, [], "--") == ["--on", "--off"]
     # flag option doesn't take value, use choice argument
-    assert (await _get_words(cli, ["--on"], "a")) == ["a1", "a2"]
+    assert await _get_words(cli, ["--on"], "a") == ["a1", "a2"]
+
+
+@pytest.mark.anyio
+async def test_flag_option_with_nargs_option():
+    cli = Command(
+        "cli",
+        add_help_option=False,
+        params=[
+            Argument(["a"], type=Choice(["a1", "a2", "b"])),
+            Option(["--flag"], is_flag=True),
+            Option(["-c"], type=Choice(["p", "q"]), nargs=2),
+        ],
+    )
+    assert await _get_words(cli, ["a1", "--flag", "-c"], "") == ["p", "q"]
 
 
 @pytest.mark.anyio
@@ -250,8 +264,8 @@ async def test_option_custom():
             Argument(["z"], shell_complete=custom),
         ],
     )
-    assert (await _get_words(cli, ["a", "b"], "")) == [""]
-    assert (await _get_words(cli, ["a", "b"], "c")) == ["C"]
+    assert await _get_words(cli, ["a", "b"], "") == [""]
+    assert await _get_words(cli, ["a", "b"], "c") == ["C"]
 
 
 @pytest.mark.anyio
@@ -260,9 +274,9 @@ async def test_option_multiple():
         "type",
         params=[Option(["-m"], type=Choice(["a", "b"]), multiple=True), Option(["-f"])],
     )
-    assert (await _get_words(cli, ["-m"], "")) == ["a", "b"]
+    assert await _get_words(cli, ["-m"], "") == ["a", "b"]
     assert "-m" in await _get_words(cli, ["-m", "a"], "-")
-    assert (await _get_words(cli, ["-m", "a", "-m"], "")) == ["a", "b"]
+    assert await _get_words(cli, ["-m", "a", "-m"], "") == ["a", "b"]
     # used single options aren't suggested again
     assert "-c" not in await _get_words(cli, ["-c", "f"], "-")
 
@@ -270,9 +284,9 @@ async def test_option_multiple():
 @pytest.mark.anyio
 async def test_option_nargs():
     cli = Command("cli", params=[Option(["-c"], type=Choice(["a", "b"]), nargs=2)])
-    assert (await _get_words(cli, ["-c"], "")) == ["a", "b"]
-    assert (await _get_words(cli, ["-c", "a"], "")) == ["a", "b"]
-    assert (await _get_words(cli, ["-c", "a", "b"], "")) == []
+    assert await _get_words(cli, ["-c"], "") == ["a", "b"]
+    assert await _get_words(cli, ["-c", "a"], "") == ["a", "b"]
+    assert await _get_words(cli, ["-c", "a", "b"], "") == []
 
 
 @pytest.mark.anyio
@@ -285,13 +299,13 @@ async def test_argument_nargs():
             Option(["-z"]),
         ],
     )
-    assert (await _get_words(cli, [], "")) == ["a", "b"]
-    assert (await _get_words(cli, ["a"], "")) == ["a", "b"]
-    assert (await _get_words(cli, ["a", "b"], "")) == ["c", "d"]
-    assert (await _get_words(cli, ["a", "b", "c"], "")) == ["c", "d"]
-    assert (await _get_words(cli, ["a", "b", "c", "d"], "")) == ["c", "d"]
-    assert (await _get_words(cli, ["a", "-z", "1"], "")) == ["a", "b"]
-    assert (await _get_words(cli, ["a", "-z", "1", "b"], "")) == ["c", "d"]
+    assert await _get_words(cli, [], "") == ["a", "b"]
+    assert await _get_words(cli, ["a"], "") == ["a", "b"]
+    assert await _get_words(cli, ["a", "b"], "") == ["c", "d"]
+    assert await _get_words(cli, ["a", "b", "c"], "") == ["c", "d"]
+    assert await _get_words(cli, ["a", "b", "c", "d"], "") == ["c", "d"]
+    assert await _get_words(cli, ["a", "-z", "1"], "") == ["a", "b"]
+    assert await _get_words(cli, ["a", "-z", "1", "b"], "") == ["c", "d"]
 
 
 @pytest.mark.anyio
@@ -304,10 +318,10 @@ async def test_double_dash():
             Argument(["name"], type=Choice(["name", "--", "-o", "--opt"])),
         ],
     )
-    assert (await _get_words(cli, [], "-")) == ["--opt"]
-    assert (await _get_words(cli, ["value"], "-")) == ["--opt"]
-    assert (await _get_words(cli, [], "")) == ["name", "--", "-o", "--opt"]
-    assert (await _get_words(cli, ["--"], "")) == ["name", "--", "-o", "--opt"]
+    assert await _get_words(cli, [], "-") == ["--opt"]
+    assert await _get_words(cli, ["value"], "-") == ["--opt"]
+    assert await _get_words(cli, [], "") == ["name", "--", "-o", "--opt"]
+    assert await _get_words(cli, ["--"], "") == ["name", "--", "-o", "--opt"]
 
 
 @pytest.mark.anyio
@@ -328,8 +342,8 @@ async def test_hidden():
     )
     assert "hidden" not in await _get_words(cli, [], "")
     assert "hidden" not in await _get_words(cli, [], "hidden")
-    assert (await _get_words(cli, ["hidden"], "-")) == ["-a"]
-    assert (await _get_words(cli, ["hidden", "-b"], "")) == ["a", "b"]
+    assert await _get_words(cli, ["hidden"], "-") == ["-a"]
+    assert await _get_words(cli, ["hidden", "-b"], "") == ["a", "b"]
 
 
 @pytest.mark.anyio
@@ -355,10 +369,9 @@ def _patch_for_completion(monkeypatch):
 
 @pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
 @pytest.mark.usefixtures("_patch_for_completion")
-@pytest.mark.anyio
-async def test_full_source(runner, shell):
+def test_full_source(runner, shell):
     cli = Group("cli", commands=[Command("a"), Command("b")])
-    result = await runner.invoke(cli, env={"_CLI_COMPLETE": f"{shell}_source"})
+    result = runner.invoke(cli, env={"_CLI_COMPLETE": f"{shell}_source"})
     assert f"_CLI_COMPLETE={shell}_complete" in result.output
 
 
@@ -371,14 +384,14 @@ async def test_full_source(runner, shell):
         ("zsh", {"COMP_WORDS": "a b", "COMP_CWORD": "1"}, "plain\nb\nbee\n"),
         ("fish", {"COMP_WORDS": "", "COMP_CWORD": ""}, "plain,a\nplain,b\tbee\n"),
         ("fish", {"COMP_WORDS": "a b", "COMP_CWORD": "b"}, "plain,b\tbee\n"),
+        ("fish", {"COMP_WORDS": 'a "b', "COMP_CWORD": '"b'}, "plain,b\tbee\n"),
     ],
 )
 @pytest.mark.usefixtures("_patch_for_completion")
-@pytest.mark.anyio
-async def test_full_complete(runner, shell, env, expect):
+def test_full_complete(runner, shell, env, expect):
     cli = Group("cli", commands=[Command("a"), Command("b", help="bee")])
     env["_CLI_COMPLETE"] = f"{shell}_complete"
-    result = await runner.invoke(cli, env=env)
+    result = runner.invoke(cli, env=env)
     assert result.output == expect
 
 
@@ -433,8 +446,7 @@ async def test_full_complete(runner, shell, env, expect):
     ],
 )
 @pytest.mark.usefixtures("_patch_for_completion")
-@pytest.mark.anyio
-async def test_zsh_full_complete_with_colons(
+def test_zsh_full_complete_with_colons(
     runner, env: Mapping[str, str], expect: str
 ) -> None:
     cli = Group(
@@ -446,7 +458,7 @@ async def test_zsh_full_complete_with_colons(
             Command("c:e"),
         ],
     )
-    result = await runner.invoke(
+    result = runner.invoke(
         cli,
         env={
             **env,
@@ -457,13 +469,12 @@ async def test_zsh_full_complete_with_colons(
 
 
 @pytest.mark.usefixtures("_patch_for_completion")
-@pytest.mark.anyio
-async def test_context_settings(runner):
+def test_context_settings(runner):
     def complete(ctx, param, incomplete):
         return ctx.obj["choices"]
 
     cli = Command("cli", params=[Argument("x", shell_complete=complete)])
-    result = await runner.invoke(
+    result = runner.invoke(
         cli,
         obj={"choices": ["a", "b"]},
         env={"COMP_WORDS": "", "COMP_CWORD": "0", "_CLI_COMPLETE": "bash_complete"},

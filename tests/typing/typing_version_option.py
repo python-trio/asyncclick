@@ -4,7 +4,7 @@ From https://click.palletsprojects.com/en/stable/options/#callbacks-and-eager-op
 
 from typing_extensions import assert_type
 
-import click
+import asyncclick as click
 
 
 @click.command()

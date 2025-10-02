@@ -14,15 +14,15 @@ import sys
 def tracking_import(module, locals=None, globals=None, fromlist=None,
                     level=0):
     rv = real_import(module, locals, globals, fromlist, level)
-    if globals and globals.get('__name__','').startswith('asyncclick') and level == 0:
+    if globals and '__name__' in globals and globals['__name__'].startswith('asyncclick') and level == 0:
         found_imports.add(module)
     return rv
 builtins.__import__ = tracking_import
 
-import asyncclick as click
+import asyncclick
 rv = list(found_imports)
 import json
-click.echo(json.dumps(rv))
+asyncclick.echo(json.dumps(rv))
 """
 
 ALLOWED_IMPORTS = {
@@ -44,7 +44,6 @@ ALLOWED_IMPORTS = {
     "itertools",
     "os",
     "re",
-    "shutil",
     "stat",
     "struct",
     "sys",

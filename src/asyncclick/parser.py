@@ -30,23 +30,22 @@ from collections import deque
 from gettext import gettext as _
 from gettext import ngettext
 
+from ._utils import FLAG_NEEDS_VALUE
+from ._utils import UNSET
 from .exceptions import BadArgumentUsage
 from .exceptions import BadOptionUsage
 from .exceptions import NoSuchOption
 from .exceptions import UsageError
 
 if t.TYPE_CHECKING:
+    from ._utils import T_FLAG_NEEDS_VALUE
+    from ._utils import T_UNSET
     from .core import Argument as CoreArgument
     from .core import Context
     from .core import Option as CoreOption
     from .core import Parameter as CoreParameter
 
 V = t.TypeVar("V")
-
-# Sentinel value that indicates an option was passed as a flag without a
-# value but is not a flag option. Option.consume_value uses this to
-# prompt or use the flag_value.
-_flag_needs_value = object()
 
 
 def _unpack_args(
@@ -59,21 +58,21 @@ def _unpack_args(
     The nargs specification is the number of arguments that should be consumed
     or `-1` to indicate that this position should eat up all the remainders.
 
-    Missing items are filled with `None`.
+    Missing items are filled with ``UNSET``.
     """
     args = deque(args)
     nargs_spec = deque(nargs_spec)
-    rv: list[str | tuple[str | None, ...] | None] = []
+    rv: list[str | tuple[str | T_UNSET, ...] | T_UNSET] = []
     spos: int | None = None
 
-    def _fetch(c: deque[V]) -> V | None:
+    def _fetch(c: deque[V]) -> V | T_UNSET:
         try:
             if spos is None:
                 return c.popleft()
             else:
                 return c.pop()
         except IndexError:
-            return None
+            return UNSET
 
     while nargs_spec:
         nargs = _fetch(nargs_spec)
@@ -82,7 +81,7 @@ def _unpack_args(
             continue
 
         if nargs == 1:
-            rv.append(_fetch(args))
+            rv.append(_fetch(args))  # type: ignore[arg-type]
         elif nargs > 1:
             x = [_fetch(args) for _ in range(nargs)]
 
@@ -97,7 +96,7 @@ def _unpack_args(
                 raise TypeError("Cannot have two nargs < 0")
 
             spos = len(rv)
-            rv.append(None)
+            rv.append(UNSET)
 
     # spos is the position of the wildcard (star).  If it's not `None`,
     # we fill it with the remainder.
@@ -187,14 +186,14 @@ class _Argument:
 
     def process(
         self,
-        value: str | cabc.Sequence[str | None] | None,
+        value: str | cabc.Sequence[str | None] | None | T_UNSET,
         state: _ParsingState,
     ) -> None:
         if self.nargs > 1:
-            assert value is not None
-            holes = sum(1 for x in value if x is None)
+            assert isinstance(value, cabc.Sequence)
+            holes = sum(1 for x in value if x is UNSET)
             if holes == len(value):
-                value = None
+                value = UNSET
             elif holes != 0:
                 raise BadArgumentUsage(
                     _("Argument {name!r} takes {nargs} values.").format(
@@ -202,10 +201,9 @@ class _Argument:
                     )
                 )
 
-        if self.nargs == -1 and self.obj.envvar is not None and value == ():
-            # Replace empty tuple with None so that a value from the
-            # environment may be tried.
-            value = None
+        # We failed to collect any argument value so we consider the argument as unset.
+        if value == ():
+            value = UNSET
 
         state.opts[self.dest] = value  # type: ignore
         state.order.append(self.obj)
@@ -229,7 +227,7 @@ class _OptionParser:
     implement features that are implemented on a higher level (such as
     types or defaults).
 
-    :param ctx: optionally the :class:`~asyncclick.Context` where this parser
+    :param ctx: optionally the :class:`~click.Context` where this parser
                 should go with.
 
     .. deprecated:: 8.2
@@ -237,7 +235,7 @@ class _OptionParser:
     """
 
     def __init__(self, ctx: Context | None = None) -> None:
-        #: The :class:`~asyncclick.Context` for this parser.  This might be
+        #: The :class:`~click.Context` for this parser.  This might be
         #: `None` for some advanced use cases.
         self.ctx = ctx
         #: This controls how the parser deals with interspersed arguments.
@@ -304,7 +302,7 @@ class _OptionParser:
         """
         state = _ParsingState(args)
         try:
-            self._process_args_for_options(state)
+            await self._process_args_for_options(state)
             self._process_args_for_args(state)
         except UsageError:
             if self.ctx is None or not self.ctx.resilient_parsing:
@@ -322,7 +320,7 @@ class _OptionParser:
         state.largs = args
         state.rargs = []
 
-    def _process_args_for_options(self, state: _ParsingState) -> None:
+    async def _process_args_for_options(self, state: _ParsingState) -> None:
         while state.rargs:
             arg = state.rargs.pop(0)
             arglen = len(arg)
@@ -331,7 +329,7 @@ class _OptionParser:
             if arg == "--":
                 return
             elif arg[:1] in self._opt_prefixes and arglen > 1:
-                self._process_opts(arg, state)
+                await self._process_opts(arg, state)
             elif self.allow_interspersed_args:
                 state.largs.append(arg)
             else:
@@ -358,7 +356,7 @@ class _OptionParser:
         # *empty* -- still a subset of [arg0, ..., arg(i-1)], but
         # not a very interesting subset!
 
-    def _match_long_opt(
+    async def _match_long_opt(
         self, opt: str, explicit_value: str | None, state: _ParsingState
     ) -> None:
         if opt not in self._long_opt:
@@ -384,11 +382,11 @@ class _OptionParser:
             )
 
         else:
-            value = None
+            value = UNSET
 
         option.process(value, state)
 
-    def _match_short_opt(self, arg: str, state: _ParsingState) -> None:
+    async def _match_short_opt(self, arg: str, state: _ParsingState) -> None:
         stop = False
         i = 1
         prefix = arg[0]
@@ -414,7 +412,7 @@ class _OptionParser:
                 value = self._get_value_from_state(opt, option, state)
 
             else:
-                value = None
+                value = UNSET
 
             option.process(value, state)
 
@@ -430,13 +428,15 @@ class _OptionParser:
 
     def _get_value_from_state(
         self, option_name: str, option: _Option, state: _ParsingState
-    ) -> t.Any:
+    ) -> str | cabc.Sequence[str] | T_FLAG_NEEDS_VALUE:
         nargs = option.nargs
+
+        value: str | cabc.Sequence[str] | T_FLAG_NEEDS_VALUE
 
         if len(state.rargs) < nargs:
             if option.obj._flag_needs_value:
                 # Option allows omitting the value.
-                value = _flag_needs_value
+                value = FLAG_NEEDS_VALUE
             else:
                 raise BadOptionUsage(
                     option_name,
@@ -457,7 +457,7 @@ class _OptionParser:
             ):
                 # The next arg looks like the start of an option, don't
                 # use it as the value if omitting the value is allowed.
-                value = _flag_needs_value
+                value = FLAG_NEEDS_VALUE
             else:
                 value = state.rargs.pop(0)
         else:
@@ -466,7 +466,7 @@ class _OptionParser:
 
         return value
 
-    def _process_opts(self, arg: str, state: _ParsingState) -> None:
+    async def _process_opts(self, arg: str, state: _ParsingState) -> None:
         explicit_value = None
         # Long option handling happens in two parts.  The first part is
         # supporting explicitly attached values.  In any case, we will try
@@ -481,7 +481,7 @@ class _OptionParser:
         # the long option matching code.  Note that this allows options
         # like "-foo" to be matched as long options.
         try:
-            self._match_long_opt(norm_long_opt, explicit_value, state)
+            await self._match_long_opt(norm_long_opt, explicit_value, state)
         except NoSuchOption:
             # At this point the long option matching failed, and we need
             # to try with short options.  However there is a special rule
@@ -490,7 +490,7 @@ class _OptionParser:
             # short option code and will instead raise the no option
             # error.
             if arg[:2] not in self._opt_prefixes:
-                self._match_short_opt(arg, state)
+                await self._match_short_opt(arg, state)
                 return
 
             if not self.ignore_unknown_options:

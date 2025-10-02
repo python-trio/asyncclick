@@ -2,7 +2,7 @@
 
 # Parameters
 
-```{currentmodule} asyncclick
+```{currentmodule} click
 ```
 
 Click supports only two principle types of parameters for scripts (by design): options and arguments.

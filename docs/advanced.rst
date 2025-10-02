@@ -1,7 +1,7 @@
 Advanced Patterns
 =================
 
-.. currentmodule:: asyncclick
+.. currentmodule:: click
 
 In addition to common functionality, Click offers some advanced features.
 
@@ -38,17 +38,20 @@ Here's an example for a ``--version`` flag:
 
 .. click:example::
 
-    def print_version(ctx, param, value):
+    async def print_version(ctx, param, value):
         if not value or ctx.resilient_parsing:
             return
         click.echo('Version 1.0')
-        ctx.exit()
+        ctx.aexit()
 
     @click.command()
     @click.option('--version', is_flag=True, callback=print_version,
                   expose_value=False, is_eager=True)
     def hello():
         click.echo('Hello World!')
+
+(Note that ``ctx.exit`` is asynchronous in asyncclick, and has thus been renamed.
+Alternately you can use ``sys.exit``.)
 
 The `expose_value` parameter prevents the pretty pointless ``version``
 parameter from being passed to the callback.  If that was not specified, a
@@ -222,7 +225,7 @@ Example:
     @cli.command()
     @click.option('--count', default=1)
     @click.pass_context
-    async def dist(ctx, count):
+    def dist(ctx, count):
         await ctx.forward(test)
         await ctx.invoke(test, count=42)
 
@@ -366,7 +369,7 @@ Ordinarily, it would be used with the ``with`` statement:
 However, a ``with`` block in a group would exit and close the database
 before it could be used by a subcommand.
 
-Instead, use the context's :meth:`~asyncclick.Context.with_resource` method
+Instead, use the context's :meth:`~click.Context.with_resource` method
 to enter the context manager and return the resource. When the group and
 any subcommands finish, the context's resources are cleaned up.
 
@@ -385,12 +388,9 @@ any subcommands finish, the context's resources are cleaned up.
         for entry in obj.db.query(...):
             click.echo(entry)
 
-There is also a :meth:`~asyncclick.Context.with_async_resource` method
-if the resource must be used asynchronously.
-
 If the resource isn't a context manager, usually it can be wrapped in
 one using something from :mod:`contextlib`. If that's not possible, use
-the context's :meth:`~asyncclick.Context.call_on_close` method to register a
+the context's :meth:`~click.Context.call_on_close` method to register a
 cleanup function.
 
 .. code-block:: python
@@ -407,7 +407,6 @@ cleanup function.
             db.save()
             db.close()
 
-This method also accepts async close procedures.
 
 .. versionchanged:: 8.2 ``Context.call_on_close`` and context managers registered
     via ``Context.with_resource`` will be closed when the CLI exits. These were

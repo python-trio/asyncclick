@@ -1,7 +1,7 @@
 # Testing Click Applications
 
 ```{eval-rst}
-.. currentmodule:: asyncclick.testing
+.. currentmodule:: click.testing
 ```
 
 Click provides the {ref}`click.testing <testing>` module to help you invoke command line applications and check their behavior.
@@ -25,7 +25,7 @@ The key pieces are:
 ```{code-block} python
 :caption: hello.py
 
-import asyncclick as click
+import click
 
 @click.command()
 @click.argument('name')
@@ -36,20 +36,15 @@ def hello(name):
 ```{code-block} python
 :caption: test_hello.py
 
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from hello import hello
-import pytest
 
-@pytest.mark.anyio
-async def test_hello_world():
+def test_hello_world():
   runner = CliRunner()
-  result = await runner.invoke(hello, ['Peter'])
+  result = runner.invoke(hello, ['Peter'])
   assert result.exit_code == 0
   assert result.output == 'Hello Peter!\n'
 ```
-
-Note that {meth}`CliRunner.invoke` is async. The {func}`runner` fixture, which most
-Click tests use, contains a synchronous {attr}`invoke` for your convenience.
 
 ## Subcommands
 
@@ -73,15 +68,12 @@ def sync():
 ```{code-block} python
 :caption: test_sync.py
 
-import pytest
-
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from sync import cli
 
-@pytest.mark.anyio
-async def test_sync():
+def test_sync():
   runner = CliRunner()
-  result = await runner.invoke(cli, ['--debug', 'sync'])
+  result = runner.invoke(cli, ['--debug', 'sync'])
   assert result.exit_code == 0
   assert 'Debug mode is on' in result.output
   assert 'Syncing' in result.output
@@ -109,15 +101,12 @@ def sync():
 ```{code-block} python
 :caption: test_sync.py
 
-import pytest
-
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from sync import cli
 
-@pytest.mark.anyio
-async def test_sync():
+def test_sync():
   runner = CliRunner()
-  result = await runner.invoke(cli, ['sync'], terminal_width=60)
+  result = runner.invoke(cli, ['sync'], terminal_width=60)
   assert result.exit_code == 0
   assert 'Debug mode is on' in result.output
   assert 'Syncing' in result.output
@@ -141,19 +130,16 @@ def cat(f):
 ```{code-block} python
 :caption: test_cat.py
 
-import pytest
-
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from cat import cat
 
-@pytest.mark.anyio
-async def test_cat():
+def test_cat():
    runner = CliRunner()
    with runner.isolated_filesystem():
       with open('hello.txt', 'w') as f:
           f.write('Hello World!')
 
-      result = await runner.invoke(cat, ['hello.txt'])
+      result = runner.invoke(cat, ['hello.txt'])
       assert result.exit_code == 0
       assert result.output == 'Hello World!\n'
 ```
@@ -165,19 +151,16 @@ to integrate with a framework like Pytest that manages temporary files.
 ```{code-block} python
 :caption: test_cat.py
 
-import pytest
-
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from cat import cat
 
-@pytest.mark.anyio
-async def test_cat_with_path_specified():
+def test_cat_with_path_specified():
    runner = CliRunner()
    with runner.isolated_filesystem('~/test_folder'):
       with open('hello.txt', 'w') as f:
           f.write('Hello World!')
 
-      result = await runner.invoke(cat, ['hello.txt'])
+      result = runner.invoke(cat, ['hello.txt'])
       assert result.exit_code == 0
       assert result.output == 'Hello World!\n'
 ```
@@ -200,15 +183,12 @@ def prompt(foo):
 ```{code-block} python
 :caption: test_prompt.py
 
-import pytest
-
-from asyncclick.testing import CliRunner
+from click.testing import CliRunner
 from prompt import prompt
 
-@pytest.mark.anyio
-async def test_prompts():
+def test_prompts():
    runner = CliRunner()
-   result = await runner.invoke(prompt, input='wau wau\n')
+   result = runner.invoke(prompt, input='wau wau\n')
    assert not result.exception
    assert result.output == 'Foo: wau wau\nfoo=wau wau\n'
 ```

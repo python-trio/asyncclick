@@ -7,23 +7,23 @@ from itertools import chain
 import pytest
 
 import asyncclick as click
+from asyncclick._utils import UNSET
 
 
-@pytest.mark.anyio
-async def test_basic_functionality(runner):
+def test_basic_functionality(runner):
     @click.command()
     def cli():
         """Hello World!"""
         click.echo("I EXECUTED")
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert not result.exception
     assert "Hello World!" in result.output
     assert "Show this message and exit." in result.output
     assert result.exit_code == 0
     assert "I EXECUTED" not in result.output
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert not result.exception
     assert "I EXECUTED" in result.output
     assert result.exit_code == 0
@@ -58,8 +58,7 @@ async def test_return_values():
         assert rv == 42
 
 
-@pytest.mark.anyio
-async def test_basic_group(runner):
+def test_basic_group(runner):
     @click.group()
     def cli():
         """This is the root."""
@@ -70,7 +69,7 @@ async def test_basic_group(runner):
         """This is a subcommand."""
         click.echo("SUBCOMMAND EXECUTED")
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert not result.exception
     assert "COMMAND [ARGS]..." in result.output
     assert "This is the root" in result.output
@@ -78,7 +77,7 @@ async def test_basic_group(runner):
     assert result.exit_code == 0
     assert "ROOT EXECUTED" not in result.output
 
-    result = await runner.invoke(cli, ["subcommand"])
+    result = runner.invoke(cli, ["subcommand"])
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
@@ -86,8 +85,7 @@ async def test_basic_group(runner):
     assert "SUBCOMMAND EXECUTED" in result.output
 
 
-@pytest.mark.anyio
-async def test_group_commands_dict(runner):
+def test_group_commands_dict(runner):
     """A Group can be built with a dict of commands."""
 
     @click.command()
@@ -95,12 +93,11 @@ async def test_group_commands_dict(runner):
         click.echo("sub", nl=False)
 
     cli = click.Group(commands={"other": sub})
-    result = await runner.invoke(cli, ["other"])
+    result = runner.invoke(cli, ["other"])
     assert result.output == "sub"
 
 
-@pytest.mark.anyio
-async def test_group_from_list(runner):
+def test_group_from_list(runner):
     """A Group can be built with a list of commands."""
 
     @click.command()
@@ -108,7 +105,7 @@ async def test_group_from_list(runner):
         click.echo("sub", nl=False)
 
     cli = click.Group(commands=[sub])
-    result = await runner.invoke(cli, ["sub"])
+    result = runner.invoke(cli, ["sub"])
     assert result.output == "sub"
 
 
@@ -122,14 +119,13 @@ async def test_group_from_list(runner):
         (["--s=\N{SNOWMAN}"], "S:[\N{SNOWMAN}]"),
     ],
 )
-@pytest.mark.anyio
-async def test_string_option(runner, args, expect):
+def test_string_option(runner, args, expect):
     @click.command()
     @click.option("--s", default="no value")
     def cli(s):
         click.echo(f"S:[{s}]")
 
-    result = await runner.invoke(cli, args)
+    result = runner.invoke(cli, args)
     assert expect in result.output
 
     if expect.startswith("Error:"):
@@ -146,14 +142,13 @@ async def test_string_option(runner, args, expect):
         (["--i=x"], "Error: Invalid value for '--i': 'x' is not a valid integer."),
     ],
 )
-@pytest.mark.anyio
-async def test_int_option(runner, args, expect):
+def test_int_option(runner, args, expect):
     @click.command()
     @click.option("--i", default=42)
     def cli(i):
         click.echo(f"I:[{i * 2}]")
 
-    result = await runner.invoke(cli, args)
+    result = runner.invoke(cli, args)
     assert expect in result.output
 
     if expect.startswith("Error:"):
@@ -173,8 +168,7 @@ async def test_int_option(runner, args, expect):
         (["--u=x"], "Error: Invalid value for '--u': 'x' is not a valid UUID."),
     ],
 )
-@pytest.mark.anyio
-async def test_uuid_option(runner, args, expect):
+def test_uuid_option(runner, args, expect):
     @click.command()
     @click.option(
         "--u", default="ba122011-349f-423b-873b-9d6a79c688ab", type=click.UUID
@@ -182,7 +176,7 @@ async def test_uuid_option(runner, args, expect):
     def cli(u):
         click.echo(f"U:[{u}]")
 
-    result = await runner.invoke(cli, args)
+    result = runner.invoke(cli, args)
     assert expect in result.output
 
     if expect.startswith("Error:"):
@@ -199,14 +193,13 @@ async def test_uuid_option(runner, args, expect):
         ("--f=x", "Error: Invalid value for '--f': 'x' is not a valid float."),
     ],
 )
-@pytest.mark.anyio
-async def test_float_option(runner, args, expect):
+def test_float_option(runner, args, expect):
     @click.command()
     @click.option("--f", default=42.0)
     def cli(f):
         click.echo(f"F:[{f}]")
 
-    result = await runner.invoke(cli, args)
+    result = runner.invoke(cli, args)
     assert expect in result.output
 
     if expect.startswith("Error:"):
@@ -215,21 +208,30 @@ async def test_float_option(runner, args, expect):
         assert result.exception is None
 
 
-@pytest.mark.parametrize("default", [True, False])
 @pytest.mark.parametrize(
-    ("args", "expect"), [(["--on"], True), (["--off"], False), ([], None)]
+    ("args", "default", "expect"),
+    [
+        (["--on"], True, True),
+        (["--on"], False, True),
+        (["--on"], None, True),
+        (["--on"], UNSET, True),
+        (["--off"], True, False),
+        (["--off"], False, False),
+        (["--off"], None, False),
+        (["--off"], UNSET, False),
+        ([], True, True),
+        ([], False, False),
+        ([], None, None),
+        ([], UNSET, False),
+    ],
 )
-@pytest.mark.anyio
-async def test_boolean_switch(runner, default, args, expect):
+def test_boolean_switch(runner, args, default, expect):
     @click.command()
     @click.option("--on/--off", default=default)
     def cli(on):
         return on
 
-    if expect is None:
-        expect = default
-
-    result = await runner.invoke(cli, args, standalone_mode=False)
+    result = runner.invoke(cli, args, standalone_mode=False)
     assert result.return_value is expect
 
 
@@ -240,16 +242,19 @@ async def test_boolean_switch(runner, default, args, expect):
         (True, [], True),
         (False, ["--f"], True),
         (False, [], False),
+        # Boolean flags have a 3-states logic.
+        # See: https://github.com/pallets/click/issues/3024#issue-3285556668
+        (None, ["--f"], True),
+        (None, [], None),
     ),
 )
-@pytest.mark.anyio
-async def test_boolean_flag(runner, default, args, expect):
+def test_boolean_flag(runner, default, args, expect):
     @click.command()
     @click.option("--f", is_flag=True, default=default)
     def cli(f):
         return f
 
-    result = await runner.invoke(cli, args, standalone_mode=False)
+    result = runner.invoke(cli, args, standalone_mode=False)
     assert result.return_value is expect
 
 
@@ -260,22 +265,72 @@ async def test_boolean_flag(runner, default, args, expect):
         ((x, "False") for x in ("0", "false", "f", "no", "n", "off")),
     ),
 )
-@pytest.mark.anyio
-async def test_boolean_conversion(runner, value, expect):
+def test_boolean_conversion(runner, value, expect):
     @click.command()
     @click.option("--flag", type=bool)
     def cli(flag):
         click.echo(flag, nl=False)
 
-    result = await runner.invoke(cli, ["--flag", value])
+    result = runner.invoke(cli, ["--flag", value])
     assert result.output == expect
 
-    result = await runner.invoke(cli, ["--flag", value.title()])
+    result = runner.invoke(cli, ["--flag", value.title()])
     assert result.output == expect
 
 
-@pytest.mark.anyio
-async def test_file_option(runner):
+@pytest.mark.parametrize(
+    ("default", "args", "expected"),
+    # These test cases are similar to the ones in
+    # tests/test_options.py::test_default_dual_option_callback, so keep them in sync.
+    (
+        # Each option is returning its own flag_value, whatever the default is.
+        (True, ["--upper"], "upper"),
+        (True, ["--lower"], "lower"),
+        (False, ["--upper"], "upper"),
+        (False, ["--lower"], "lower"),
+        (None, ["--upper"], "upper"),
+        (None, ["--lower"], "lower"),
+        (UNSET, ["--upper"], "upper"),
+        (UNSET, ["--lower"], "lower"),
+        # Check that the last option wins when both are specified.
+        (True, ["--upper", "--lower"], "lower"),
+        (True, ["--lower", "--upper"], "upper"),
+        # Check that the default is returned as-is when no option is specified.
+        ("upper", [], "upper"),
+        ("lower", [], "lower"),
+        ("uPPer", [], "uPPer"),
+        ("lOwEr", [], "lOwEr"),
+        (" ᕕ( ᐛ )ᕗ ", [], " ᕕ( ᐛ )ᕗ "),
+        (None, [], None),
+        # Default is normalized to None if it is UNSET.
+        (UNSET, [], None),
+        # Special case: if default=True and flag_value is set, the value returned is the
+        # flag_value, not the True Python value itself.
+        (True, [], "upper"),
+        # Non-string defaults are process as strings by the default Parameter's type.
+        (False, [], "False"),
+        (42, [], "42"),
+        (12.3, [], "12.3"),
+    ),
+)
+def test_flag_value_dual_options(runner, default, args, expected):
+    """Check how default is processed when options compete for the same variable name.
+
+    Covers the regression reported in
+    https://github.com/pallets/click/issues/3024#issuecomment-3146199461
+    """
+
+    @click.command()
+    @click.option("--upper", "case", flag_value="upper", default=default)
+    @click.option("--lower", "case", flag_value="lower")
+    def cli(case):
+        click.echo(repr(case), nl=False)
+
+    result = runner.invoke(cli, args)
+    assert result.output == repr(expected)
+
+
+def test_file_option(runner):
     @click.command()
     @click.option("--file", type=click.File("w"))
     def input(file):
@@ -287,8 +342,8 @@ async def test_file_option(runner):
         click.echo(file.read())
 
     with runner.isolated_filesystem():
-        result_in = await runner.invoke(input, ["--file=example.txt"])
-        result_out = await runner.invoke(output, ["--file=example.txt"])
+        result_in = runner.invoke(input, ["--file=example.txt"])
+        result_out = runner.invoke(output, ["--file=example.txt"])
 
     assert not result_in.exception
     assert result_in.output == ""
@@ -296,8 +351,7 @@ async def test_file_option(runner):
     assert result_out.output == "Hello World!\n\n"
 
 
-@pytest.mark.anyio
-async def test_file_lazy_mode(runner):
+def test_file_lazy_mode(runner):
     do_io = False
 
     @click.command()
@@ -315,14 +369,14 @@ async def test_file_lazy_mode(runner):
         os.mkdir("example.txt")
 
         do_io = True
-        result_in = await runner.invoke(input, ["--file=example.txt"])
+        result_in = runner.invoke(input, ["--file=example.txt"])
         assert result_in.exit_code == 1
 
         do_io = False
-        result_in = await runner.invoke(input, ["--file=example.txt"])
+        result_in = runner.invoke(input, ["--file=example.txt"])
         assert result_in.exit_code == 0
 
-        result_out = await runner.invoke(output, ["--file=example.txt"])
+        result_out = runner.invoke(output, ["--file=example.txt"])
         assert result_out.exception
 
     @click.command()
@@ -332,13 +386,12 @@ async def test_file_lazy_mode(runner):
 
     with runner.isolated_filesystem():
         os.mkdir("example.txt")
-        result_in = await runner.invoke(input_non_lazy, ["--file=example.txt"])
+        result_in = runner.invoke(input_non_lazy, ["--file=example.txt"])
         assert result_in.exit_code == 2
         assert "Invalid value for '--file': 'example.txt'" in result_in.output
 
 
-@pytest.mark.anyio
-async def test_path_option(runner):
+def test_path_option(runner):
     @click.command()
     @click.option("-O", type=click.Path(file_okay=False, exists=True, writable=True))
     def write_to_dir(o):
@@ -348,13 +401,13 @@ async def test_path_option(runner):
     with runner.isolated_filesystem():
         os.mkdir("test")
 
-        result = await runner.invoke(write_to_dir, ["-O", "test"])
+        result = runner.invoke(write_to_dir, ["-O", "test"])
         assert not result.exception
 
         with open("test/foo.txt", "rb") as f:
             assert f.read() == b"meh\n"
 
-        result = await runner.invoke(write_to_dir, ["-O", "test/foo.txt"])
+        result = runner.invoke(write_to_dir, ["-O", "test/foo.txt"])
         assert "is a file" in result.output
 
     @click.command()
@@ -364,10 +417,10 @@ async def test_path_option(runner):
         click.echo(f"is_dir={os.path.isdir(f)}")
 
     with runner.isolated_filesystem():
-        result = await runner.invoke(showtype, ["-f", "xxx"])
+        result = runner.invoke(showtype, ["-f", "xxx"])
         assert "does not exist" in result.output
 
-        result = await runner.invoke(showtype, ["-f", "."])
+        result = runner.invoke(showtype, ["-f", "."])
         assert "is_file=False" in result.output
         assert "is_dir=True" in result.output
 
@@ -377,59 +430,56 @@ async def test_path_option(runner):
         click.echo(f"exists={os.path.exists(f)}")
 
     with runner.isolated_filesystem():
-        result = await runner.invoke(exists, ["-f", "xxx"])
+        result = runner.invoke(exists, ["-f", "xxx"])
         assert "exists=False" in result.output
 
-        result = await runner.invoke(exists, ["-f", "."])
+        result = runner.invoke(exists, ["-f", "."])
         assert "exists=True" in result.output
 
 
-@pytest.mark.anyio
-async def test_choice_option(runner):
+def test_choice_option(runner):
     @click.command()
     @click.option("--method", type=click.Choice(["foo", "bar", "baz"]))
     def cli(method):
         click.echo(method)
 
-    result = await runner.invoke(cli, ["--method=foo"])
+    result = runner.invoke(cli, ["--method=foo"])
     assert not result.exception
     assert result.output == "foo\n"
 
-    result = await runner.invoke(cli, ["--method=meh"])
+    result = runner.invoke(cli, ["--method=meh"])
     assert result.exit_code == 2
     assert (
         "Invalid value for '--method': 'meh' is not one of 'foo', 'bar', 'baz'."
         in result.output
     )
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "--method [foo|bar|baz]" in result.output
 
 
-@pytest.mark.anyio
-async def test_choice_argument(runner):
+def test_choice_argument(runner):
     @click.command()
     @click.argument("method", type=click.Choice(["foo", "bar", "baz"]))
     def cli(method):
         click.echo(method)
 
-    result = await runner.invoke(cli, ["foo"])
+    result = runner.invoke(cli, ["foo"])
     assert not result.exception
     assert result.output == "foo\n"
 
-    result = await runner.invoke(cli, ["meh"])
+    result = runner.invoke(cli, ["meh"])
     assert result.exit_code == 2
     assert (
         "Invalid value for '{foo|bar|baz}': 'meh' is not one of 'foo',"
         " 'bar', 'baz'." in result.output
     )
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "{foo|bar|baz}" in result.output
 
 
-@pytest.mark.anyio
-async def test_choice_argument_enum(runner):
+def test_choice_argument_enum(runner):
     class MyEnum(str, enum.Enum):
         FOO = "foo-value"
         BAR = "bar-value"
@@ -441,23 +491,22 @@ async def test_choice_argument_enum(runner):
         assert isinstance(method, MyEnum)
         click.echo(method)
 
-    result = await runner.invoke(cli, ["foo"])
+    result = runner.invoke(cli, ["foo"])
     assert result.output == "foo-value\n"
     assert not result.exception
 
-    result = await runner.invoke(cli, ["meh"])
+    result = runner.invoke(cli, ["meh"])
     assert result.exit_code == 2
     assert (
         "Invalid value for '{foo|bar|baz}': 'meh' is not one of 'foo',"
         " 'bar', 'baz'." in result.output
     )
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "{foo|bar|baz}" in result.output
 
 
-@pytest.mark.anyio
-async def test_choice_argument_custom_type(runner):
+def test_choice_argument_custom_type(runner):
     class MyClass:
         def __init__(self, value: str) -> None:
             self.value = value
@@ -473,94 +522,99 @@ async def test_choice_argument_custom_type(runner):
         assert isinstance(method, MyClass)
         click.echo(method)
 
-    result = await runner.invoke(cli, ["foo"])
+    result = runner.invoke(cli, ["foo"])
     assert not result.exception
     assert result.output == "foo\n"
 
-    result = await runner.invoke(cli, ["meh"])
+    result = runner.invoke(cli, ["meh"])
     assert result.exit_code == 2
     assert (
         "Invalid value for '{foo|bar|baz}': 'meh' is not one of 'foo',"
         " 'bar', 'baz'." in result.output
     )
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "{foo|bar|baz}" in result.output
 
 
-@pytest.mark.anyio
-async def test_choice_argument_none(runner):
+def test_choice_argument_none(runner):
     @click.command()
     @click.argument(
         "method", type=click.Choice(["not-none", None], case_sensitive=False)
     )
     def cli(method: str | None):
         assert isinstance(method, str) or method is None
-        click.echo(method)
+        click.echo(repr(method), nl=False)
 
-    result = await runner.invoke(cli, ["not-none"])
+    result = runner.invoke(cli, ["not-none"])
     assert not result.exception
-    assert result.output == "not-none\n"
+    assert result.output == repr("not-none")
 
-    # None is not yet supported.
-    result = await runner.invoke(cli, ["none"])
+    result = runner.invoke(cli, ["none"])
+    assert not result.exception
+    assert result.output == repr(None)
+
+    result = runner.invoke(cli, [])
     assert result.exception
+    assert (
+        "Error: Missing argument '{not-none|none}'. "
+        "Choose from:\n\tnot-none,\n\tnone\n" in result.stderr
+    )
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.output.startswith("Usage: cli [OPTIONS] {not-none|none}\n")
 
 
-@pytest.mark.anyio
-async def test_datetime_option_default(runner):
+def test_datetime_option_default(runner):
     @click.command()
     @click.option("--start_date", type=click.DateTime())
     def cli(start_date):
         click.echo(start_date.strftime("%Y-%m-%dT%H:%M:%S"))
 
-    result = await runner.invoke(cli, ["--start_date=2015-09-29"])
+    result = runner.invoke(cli, ["--start_date=2015-09-29"])
     assert not result.exception
     assert result.output == "2015-09-29T00:00:00\n"
 
-    result = await runner.invoke(cli, ["--start_date=2015-09-29T09:11:22"])
+    result = runner.invoke(cli, ["--start_date=2015-09-29T09:11:22"])
     assert not result.exception
     assert result.output == "2015-09-29T09:11:22\n"
 
-    result = await runner.invoke(cli, ["--start_date=2015-09"])
+    result = runner.invoke(cli, ["--start_date=2015-09"])
     assert result.exit_code == 2
     assert (
         "Invalid value for '--start_date': '2015-09' does not match the formats"
         " '%Y-%m-%d', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'."
     ) in result.output
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert (
         "--start_date [%Y-%m-%d|%Y-%m-%dT%H:%M:%S|%Y-%m-%d %H:%M:%S]" in result.output
     )
 
 
-@pytest.mark.anyio
-async def test_datetime_option_custom(runner):
+def test_datetime_option_custom(runner):
     @click.command()
     @click.option("--start_date", type=click.DateTime(formats=["%A %B %d, %Y"]))
     def cli(start_date):
         click.echo(start_date.strftime("%Y-%m-%dT%H:%M:%S"))
 
-    result = await runner.invoke(cli, ["--start_date=Wednesday June 05, 2010"])
+    result = runner.invoke(cli, ["--start_date=Wednesday June 05, 2010"])
     assert not result.exception
     assert result.output == "2010-06-05T00:00:00\n"
 
 
-@pytest.mark.anyio
-async def test_required_option(runner):
+def test_required_option(runner):
     @click.command()
     @click.option("--foo", required=True)
     def cli(foo):
         click.echo(foo)
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert result.exit_code == 2
     assert "Missing option '--foo'" in result.output
 
 
-@pytest.mark.anyio
-async def test_evaluation_order(runner):
+def test_evaluation_order(runner):
     called = []
 
     def memo(ctx, param, value):
@@ -578,7 +632,7 @@ async def test_evaluation_order(runner):
     def cli(**x):
         pass
 
-    result = await runner.invoke(
+    result = runner.invoke(
         cli,
         [
             "--eager-flag2",
@@ -603,20 +657,18 @@ async def test_evaluation_order(runner):
     ]
 
 
-@pytest.mark.anyio
-async def test_hidden_option(runner):
+def test_hidden_option(runner):
     @click.command()
     @click.option("--nope", hidden=True)
     def cli(nope):
         click.echo(nope)
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "--nope" not in result.output
 
 
-@pytest.mark.anyio
-async def test_hidden_command(runner):
+def test_hidden_command(runner):
     @click.group()
     def cli():
         pass
@@ -625,13 +677,12 @@ async def test_hidden_command(runner):
     def nope():
         pass
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "nope" not in result.output
 
 
-@pytest.mark.anyio
-async def test_hidden_group(runner):
+def test_hidden_group(runner):
     @click.group()
     def cli():
         pass
@@ -644,14 +695,13 @@ async def test_hidden_group(runner):
     def nope():
         pass
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "subgroup" not in result.output
     assert "nope" not in result.output
 
 
-@pytest.mark.anyio
-async def test_summary_line(runner):
+def test_summary_line(runner):
     @click.group()
     def cli():
         pass
@@ -665,13 +715,12 @@ async def test_summary_line(runner):
         """
         pass
 
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert "Summary line without period" in result.output
     assert "Here is a sentence." not in result.output
 
 
-@pytest.mark.anyio
-async def test_help_invalid_default(runner):
+def test_help_invalid_default(runner):
     cli = click.Command(
         "cli",
         params=[
@@ -683,6 +732,6 @@ async def test_help_invalid_default(runner):
             ),
         ],
     )
-    result = await runner.invoke(cli, ["--help"])
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "default: not found" in result.output

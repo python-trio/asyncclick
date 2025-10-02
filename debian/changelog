@@ -1,8 +1,32 @@
+asyncclick (1:8.3.0.0-1) unstable; urgency=medium
+
+  * Merge
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Thu, 02 Oct 2025 18:32:52 +0200
+
 asyncclick (1:8.2.2+anyio.1-1) unstable; urgency=medium
 
   * Merge
 
  -- Matthias Urlichs <matthias@urlichs.de>  Wed, 13 Aug 2025 17:26:28 +0200
+
+asyncclick (1:8.1.8-1) unstable; urgency=medium
+
+  * new Upstream
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Mon, 06 Jan 2025 10:42:05 +0100
+
+asyncclick (1:8.1.7-2) unstable; urgency=medium
+
+  * Fixups
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sun, 10 Mar 2024 10:28:31 +0100
+
+asyncclick (1:8.1.3-2) unstable; urgency=medium
+
+  * new Upstream
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Tue, 07 Jun 2022 18:53:38 +0200
 
 asyncclick (1:8.0.0a2+anyio.7-1) unstable; urgency=medium
 
@@ -33,6 +57,42 @@ asyncclick (1:8.0.0a2+anyio.1-1) unstable; urgency=medium
   * Merge current 8.0 alpha
 
  -- Matthias Urlichs <matthias@urlichs.de>  Sun, 07 Feb 2021 16:03:11 +0100
+
+asyncclick (1:8.0.3-6) unstable; urgency=medium
+
+  * fix test
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sat, 15 Jan 2022 22:22:34 +0100
+
+asyncclick (1:8.0.3-5) unstable; urgency=medium
+
+  * enter_context => with_resource
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Sat, 15 Jan 2022 22:21:09 +0100
+
+asyncclick (1:8.0.3-4) unstable; urgency=medium
+
+  * missed anyio markers
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:44:55 +0100
+
+asyncclick (1:8.0.3-3) unstable; urgency=medium
+
+  * missed a comflict marker
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:43:07 +0100
+
+asyncclick (1:8.0.3-2) unstable; urgency=medium
+
+  * Fixed PYTHONPATH for tests
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:42:14 +0100
+
+asyncclick (1:8.0.3-1) unstable; urgency=medium
+
+  * Merge 8.0.3
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Wed, 05 Jan 2022 11:33:57 +0100
 
 asyncclick (1:7.0.90-1) unstable; urgency=medium
 

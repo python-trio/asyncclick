@@ -146,7 +146,7 @@ class ParamType:
         self, ctx: Context, param: Parameter, incomplete: str
     ) -> list[CompletionItem]:
         """Return a list of
-        :class:`~asyncclick.shell_completion.CompletionItem` objects for the
+        :class:`~click.shell_completion.CompletionItem` objects for the
         incomplete value. Most types do not provide completions, but
         some do, and this allows custom types to provide custom
         completions as well.
@@ -385,7 +385,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
 
         .. versionadded:: 8.0
         """
-        from asyncclick.shell_completion import CompletionItem
+        from .shell_completion import CompletionItem
 
         str_choices = map(str, self.choices)
 
@@ -867,7 +867,7 @@ class File(ParamType):
 
         .. versionadded:: 8.0
         """
-        from asyncclick.shell_completion import CompletionItem
+        from .shell_completion import CompletionItem
 
         return [CompletionItem(incomplete, type="file")]
 
@@ -1051,7 +1051,7 @@ class Path(ParamType):
 
         .. versionadded:: 8.0
         """
-        from asyncclick.shell_completion import CompletionItem
+        from .shell_completion import CompletionItem
 
         type = "dir" if self.dir_okay and not self.file_okay else "file"
         return [CompletionItem(incomplete, type=type)]
@@ -1076,7 +1076,7 @@ class Tuple(CompositeParamType):
 
     async def to_info_dict(self) -> dict[str, t.Any]:
         info_dict = await super().to_info_dict()
-        info_dict["types"] = [(await t.to_info_dict()) for t in self.types]
+        info_dict["types"] = [await t.to_info_dict() for t in self.types]
         return info_dict
 
     @property

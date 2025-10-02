@@ -6,6 +6,3 @@ export PYBUILD_NAME=asyncclick
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
-override_dh_auto_test:
-	env PYTHONPATH=src python3 -mpytest -sxv tests/
-

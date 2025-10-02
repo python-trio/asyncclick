@@ -2,7 +2,7 @@
 
 from typing_extensions import assert_type
 
-import click
+import asyncclick as click
 
 
 @click.command()

@@ -5,21 +5,72 @@ import subprocess
 import sys
 from collections import namedtuple
 from contextlib import nullcontext
+from decimal import Decimal
+from fractions import Fraction
 from functools import partial
 from io import StringIO
 from pathlib import Path
 from tempfile import tempdir
 from unittest.mock import patch
 
+import pytest
+
 import asyncclick as click
 import asyncclick._termui_impl
 import asyncclick.utils
-import pytest
 from asyncclick._compat import WIN
+from asyncclick._utils import UNSET
 
 
-@pytest.mark.anyio
-async def test_echo(runner):
+def test_unset_sentinel():
+    value = UNSET
+
+    assert value
+    assert value is UNSET
+    assert value == UNSET
+    assert repr(value) == "Sentinel.UNSET"
+    assert str(value) == "Sentinel.UNSET"
+    assert bool(value) is True
+
+    # Try all native Python values that can be falsy or truthy.
+    # See: https://docs.python.org/3/library/stdtypes.html#truth-value-testing
+    real_values = (
+        None,
+        True,
+        False,
+        0,
+        1,
+        0.0,
+        1.0,
+        0j,
+        1j,
+        Decimal(0),
+        Decimal(1),
+        Fraction(0, 1),
+        Fraction(1, 1),
+        "",
+        "a",
+        "UNSET",
+        "Sentinel.UNSET",
+        [1],
+        (1),
+        {1: "a"},
+        set(),
+        set([1]),
+        frozenset(),
+        frozenset([1]),
+        range(0),
+        range(1),
+    )
+
+    for real_value in real_values:
+        assert value != real_value
+        assert value is not real_value
+
+    assert value not in real_values
+
+
+def test_echo(runner):
     with runner.isolation() as outstreams:
         click.echo("\N{SNOWMAN}")
         click.echo(b"\x44\x44")
@@ -34,7 +85,7 @@ async def test_echo(runner):
     def cli():
         click.echo(b"\xf6")
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert result.stdout_bytes == b"\xf6\n"
 
     # Ensure we do not strip for bytes.
@@ -116,8 +167,7 @@ def test_filename_formatting():
     assert click.format_filename("/x/\ufffd.txt", shorten=True) == "�.txt"
 
 
-@pytest.mark.anyio
-async def test_prompts(runner):
+def test_prompts(runner):
     @click.command()
     def test():
         if click.confirm("Foo"):
@@ -125,17 +175,17 @@ async def test_prompts(runner):
         else:
             click.echo("no :(")
 
-    result = await runner.invoke(test, input="y\n")
+    result = runner.invoke(test, input="y\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: yes!\n"
+    assert result.output == "Foo [y/N]: y\nyes!\n"
 
-    result = await runner.invoke(test, input="\n")
+    result = runner.invoke(test, input="\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: no :(\n"
+    assert result.output == "Foo [y/N]: \nno :(\n"
 
-    result = await runner.invoke(test, input="n\n")
+    result = runner.invoke(test, input="n\n")
     assert not result.exception
-    assert result.output == "Foo [y/N]: no :(\n"
+    assert result.output == "Foo [y/N]: n\nno :(\n"
 
     @click.command()
     def test_no():
@@ -144,37 +194,37 @@ async def test_prompts(runner):
         else:
             click.echo("no :(")
 
-    result = await runner.invoke(test_no, input="y\n")
+    result = runner.invoke(test_no, input="y\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: yes!\n"
+    assert result.output == "Foo [Y/n]: y\nyes!\n"
 
-    result = await runner.invoke(test_no, input="\n")
+    result = runner.invoke(test_no, input="\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: yes!\n"
+    assert result.output == "Foo [Y/n]: \nyes!\n"
 
-    result = await runner.invoke(test_no, input="n\n")
+    result = runner.invoke(test_no, input="n\n")
     assert not result.exception
-    assert result.output == "Foo [Y/n]: no :(\n"
+    assert result.output == "Foo [Y/n]: n\nno :(\n"
 
 
-@pytest.mark.anyio
-async def test_confirm_repeat(runner):
+def test_confirm_repeat(runner):
     cli = click.Command(
         "cli", params=[click.Option(["--a/--no-a"], default=None, prompt=True)]
     )
-    result = await runner.invoke(cli, input="\ny\n")
-    assert result.output == "A [y/n]: Error: invalid input\nA [y/n]: "
+    result = runner.invoke(cli, input="\ny\n")
+    assert result.output == "A [y/n]: \nError: invalid input\nA [y/n]: y\n"
 
 
 @pytest.mark.skipif(WIN, reason="Different behavior on windows.")
-def test_prompts_abort(monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_prompts_abort(monkeypatch, capsys):
     def f(_):
         raise KeyboardInterrupt()
 
     monkeypatch.setattr("asyncclick.termui.hidden_prompt_func", f)
 
     try:
-        click.prompt("Password", hide_input=True)
+        await click.prompt("Password", hide_input=True)
     except click.Abort:
         click.echo("interrupted")
 
@@ -182,17 +232,16 @@ def test_prompts_abort(monkeypatch, capsys):
     assert out == "Password:\ninterrupted\n"
 
 
-@pytest.mark.anyio
-async def test_prompts_eof(runner):
+def test_prompts_eof(runner):
     """If too few lines of input are given, prompt should exit, not hang."""
 
     @click.command
-    def echo():
+    async def echo():
         for _ in range(3):
-            click.echo(click.prompt("", type=int))
+            click.echo(await click.prompt("", type=int))
 
     # only provide two lines of input for three prompts
-    result = await runner.invoke(echo, input="1\n2\n")
+    result = runner.invoke(echo, input="1\n2\n")
     assert result.exit_code == 1
 
 
@@ -405,15 +454,17 @@ def test_echo_color_flag(monkeypatch, capfd):
     assert stream.getvalue() == f"{styled_text}\n"
 
 
-def test_prompt_cast_default(capfd, monkeypatch):
+@pytest.mark.anyio
+async def test_prompt_cast_default(capfd, monkeypatch):
     monkeypatch.setattr(sys, "stdin", StringIO("\n"))
-    value = click.prompt("value", default="100", type=int)
+    value = await click.prompt("value", default="100", type=int)
     capfd.readouterr()
     assert isinstance(value, int)
 
 
 @pytest.mark.skipif(WIN, reason="Test too complex to make work windows.")
-def test_echo_writing_to_standard_error(capfd, monkeypatch):
+@pytest.mark.anyio
+async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     def emulate_input(text):
         """Emulate keyboard input."""
         monkeypatch.setattr(sys, "stdin", StringIO(text))
@@ -429,13 +480,13 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert err == "Echo to standard error\n"
 
     emulate_input("asdlkj\n")
-    click.prompt("Prompt to stdin")
+    await click.prompt("Prompt to stdin")
     out, err = capfd.readouterr()
     assert out == "Prompt to stdin: "
     assert err == ""
 
     emulate_input("asdlkj\n")
-    click.prompt("Prompt to stderr", err=True)
+    await click.prompt("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
     assert out == " "
     assert err == "Prompt to stderr:"
@@ -472,8 +523,7 @@ def test_echo_with_capsys(capsys):
     assert out == "Capture me.\n"
 
 
-@pytest.mark.anyio
-async def test_open_file(runner):
+def test_open_file(runner):
     @click.command()
     @click.argument("filename")
     def cli(filename):
@@ -486,41 +536,39 @@ async def test_open_file(runner):
         with open("hello.txt", "w") as f:
             f.write("Cool stuff")
 
-        result = await runner.invoke(cli, ["hello.txt"])
+        result = runner.invoke(cli, ["hello.txt"])
         assert result.exception is None
         assert result.output == "Cool stuff\nmeep\n"
 
-        result = await runner.invoke(cli, ["-"], input="foobar")
+        result = runner.invoke(cli, ["-"], input="foobar")
         assert result.exception is None
         assert result.output == "foobar\nmeep\n"
 
 
-@pytest.mark.anyio
-async def test_open_file_pathlib_dash(runner):
+def test_open_file_pathlib_dash(runner):
     @click.command()
     @click.argument(
         "filename", type=click.Path(allow_dash=True, path_type=pathlib.Path)
     )
-    async def cli(filename):
+    def cli(filename):
         click.echo(str(type(filename)))
 
         with click.open_file(filename) as f:
             click.echo(f.read())
 
-        result = await runner.invoke(cli, ["-"], input="value")
+        result = runner.invoke(cli, ["-"], input="value")
         assert result.exception is None
         assert result.output == "pathlib.Path\nvalue\n"
 
 
-@pytest.mark.anyio
-async def test_open_file_ignore_errors_stdin(runner):
+def test_open_file_ignore_errors_stdin(runner):
     @click.command()
     @click.argument("filename")
     def cli(filename):
         with click.open_file(filename, errors="ignore") as f:
             click.echo(f.read())
 
-    result = await runner.invoke(cli, ["-"], input=os.urandom(16))
+    result = runner.invoke(cli, ["-"], input=os.urandom(16))
     assert result.exception is None
 
 
@@ -553,8 +601,7 @@ def test_open_file_ignore_no_encoding(runner):
 
 @pytest.mark.skipif(WIN, reason="os.chmod() is not fully supported on Windows.")
 @pytest.mark.parametrize("permissions", [0o400, 0o444, 0o600, 0o644])
-@pytest.mark.anyio
-async def test_open_file_atomic_permissions_existing_file(runner, permissions):
+def test_open_file_atomic_permissions_existing_file(runner, permissions):
     with runner.isolated_filesystem():
         with open("existing.txt", "w") as f:
             f.write("content")
@@ -565,14 +612,13 @@ async def test_open_file_atomic_permissions_existing_file(runner, permissions):
         def cli(filename):
             click.open_file(filename, "w", atomic=True).close()
 
-        result = await runner.invoke(cli, ["existing.txt"])
+        result = runner.invoke(cli, ["existing.txt"])
         assert result.exception is None
         assert stat.S_IMODE(os.stat("existing.txt").st_mode) == permissions
 
 
 @pytest.mark.skipif(WIN, reason="os.stat() is not fully supported on Windows.")
-@pytest.mark.anyio
-async def test_open_file_atomic_permissions_new_file(runner):
+def test_open_file_atomic_permissions_new_file(runner):
     with runner.isolated_filesystem():
 
         @click.command()
@@ -586,7 +632,7 @@ async def test_open_file_atomic_permissions_new_file(runner):
             pass
         permissions = stat.S_IMODE(os.stat("test.txt").st_mode)
 
-        result = await runner.invoke(cli, ["new.txt"])
+        result = runner.invoke(cli, ["new.txt"])
         assert result.exception is None
         assert stat.S_IMODE(os.stat("new.txt").st_mode) == permissions
 
@@ -596,7 +642,7 @@ def test_iter_keepopenfile(tmpdir):
     p = tmpdir.mkdir("testdir").join("testfile")
     p.write("\n".join(expected))
     with p.open() as f:
-        for e_line, a_line in zip(expected, click.utils.KeepOpenFile(f), strict=False):
+        for e_line, a_line in zip(expected, asyncclick.utils.KeepOpenFile(f), strict=False):
             assert e_line == a_line.strip()
 
 
@@ -605,7 +651,7 @@ def test_iter_lazyfile(tmpdir):
     p = tmpdir.mkdir("testdir").join("testfile")
     p.write("\n".join(expected))
     with p.open() as f:
-        with click.utils.LazyFile(f.name) as lf:
+        with asyncclick.utils.LazyFile(f.name) as lf:
             for e_line, a_line in zip(expected, lf, strict=False):
                 assert e_line == a_line.strip()
 
@@ -629,19 +675,19 @@ class MockMain:
     ],
 )
 def test_detect_program_name(path, main, expected):
-    assert click.utils._detect_program_name(path, _main=MockMain(main)) == expected
+    assert asyncclick.utils._detect_program_name(path, _main=MockMain(main)) == expected
 
 
 def test_expand_args(monkeypatch):
     user = os.path.expanduser("~")
-    assert user in click.utils._expand_args(["~"])
+    assert user in asyncclick.utils._expand_args(["~"])
     monkeypatch.setenv("CLICK_TEST", "hello")
-    assert "hello" in click.utils._expand_args(["$CLICK_TEST"])
-    assert "pyproject.toml" in click.utils._expand_args(["*.toml"])
-    assert os.path.join("docs", "conf.py") in click.utils._expand_args(["**/conf.py"])
-    assert "*.not-found" in click.utils._expand_args(["*.not-found"])
+    assert "hello" in asyncclick.utils._expand_args(["$CLICK_TEST"])
+    assert "pyproject.toml" in asyncclick.utils._expand_args(["*.toml"])
+    assert os.path.join("docs", "conf.py") in asyncclick.utils._expand_args(["**/conf.py"])
+    assert "*.not-found" in asyncclick.utils._expand_args(["*.not-found"])
     # a bad glob pattern, such as a pytest identifier, should return itself
-    assert click.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
+    assert asyncclick.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
 
 
 @pytest.mark.parametrize(
@@ -676,5 +722,5 @@ def test_make_default_short_help(value, max_length, alter, expect):
     if alter:
         value = alter(value)
 
-    out = click.utils.make_default_short_help(value, max_length)
+    out = asyncclick.utils.make_default_short_help(value, max_length)
     assert out == expect

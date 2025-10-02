@@ -4,33 +4,29 @@ from unittest import mock
 import pytest
 
 import asyncclick as click
+from asyncclick._utils import UNSET
 
+PY2 = False  # churn
 
 @pytest.mark.anyio
-async def test_nargs_star(runner):
+async def test_nargs_star(arunner):
     @click.command()
     @click.argument("src", nargs=-1)
     @click.argument("dst")
     def copy(src, dst):
         click.echo(f"src={'|'.join(src)}")
         click.echo(f"dst={dst}")
+        sys.stdin=sys.__stdin__
+        sys.stdout=sys.__stdout__
 
-    result = await runner.invoke(copy, ["foo.txt", "bar.txt", "dir"])
+    result = await arunner.invoke(copy, ["foo.txt", "bar.txt", "dir"])
+    if result.exception:
+        raise result.exception
     assert not result.exception
     assert result.output.splitlines() == ["src=foo.txt|bar.txt", "dst=dir"]
 
 
-def test_argument_unbounded_nargs_cant_have_default(runner):
-    with pytest.raises(TypeError, match="nargs=-1"):
-
-        @click.command()
-        @click.argument("src", nargs=-1, default=["42"])
-        def copy(src):
-            pass
-
-
-@pytest.mark.anyio
-async def test_nargs_tup(runner):
+def test_nargs_tup(runner):
     @click.command()
     @click.argument("name", nargs=1)
     @click.argument("point", nargs=2, type=click.INT)
@@ -39,7 +35,7 @@ async def test_nargs_tup(runner):
         x, y = point
         click.echo(f"point={x}/{y}")
 
-    result = await runner.invoke(copy, ["peter", "1", "2"])
+    result = runner.invoke(copy, ["peter", "1", "2"])
     assert not result.exception
     assert result.output.splitlines() == ["name=peter", "point=1/2"]
 
@@ -53,15 +49,14 @@ async def test_nargs_tup(runner):
         dict(nargs=2, type=(str, int)),
     ],
 )
-@pytest.mark.anyio
-async def test_nargs_tup_composite(runner, opts):
+def test_nargs_tup_composite(runner, opts):
     @click.command()
     @click.argument("item", **opts)
     def copy(item):
         name, id = item
         click.echo(f"name={name} id={id:d}")
 
-    result = await runner.invoke(copy, ["peter", "1"])
+    result = runner.invoke(copy, ["peter", "1"])
     assert result.exception is None
     assert result.output.splitlines() == ["name=peter id=1"]
 
@@ -75,24 +70,22 @@ def test_nargs_mismatch_with_tuple_type():
             pass
 
 
-@pytest.mark.anyio
-async def test_nargs_err(runner):
+def test_nargs_err(runner):
     @click.command()
     @click.argument("x")
     def copy(x):
         click.echo(x)
 
-    result = await runner.invoke(copy, ["foo"])
+    result = runner.invoke(copy, ["foo"])
     assert not result.exception
     assert result.output == "foo\n"
 
-    result = await runner.invoke(copy, ["foo", "bar"])
+    result = runner.invoke(copy, ["foo", "bar"])
     assert result.exit_code == 2
     assert "Got unexpected extra argument (bar)" in result.output
 
 
-@pytest.mark.anyio
-async def test_bytes_args(runner, monkeypatch):
+def test_bytes_args(runner, monkeypatch):
     @click.command()
     @click.argument("arg")
     def from_bytes(arg):
@@ -108,15 +101,14 @@ async def test_bytes_args(runner, monkeypatch):
     stdin.encoding = "utf-8"
     monkeypatch.setattr(sys, "stdin", stdin)
 
-    await runner.invoke(
+    runner.invoke(
         from_bytes,
         ["Something outside of ASCII range: 林".encode()],
         catch_exceptions=False,
     )
 
 
-@pytest.mark.anyio
-async def test_file_args(runner):
+def test_file_args(runner):
     @click.command()
     @click.argument("input", type=click.File("rb"))
     @click.argument("output", type=click.File("wb"))
@@ -128,31 +120,29 @@ async def test_file_args(runner):
             output.write(chunk)
 
     with runner.isolated_filesystem():
-        result = await runner.invoke(inout, ["-", "hello.txt"], input="Hey!")
+        result = runner.invoke(inout, ["-", "hello.txt"], input="Hey!")
         assert result.output == ""
         assert result.exit_code == 0
         with open("hello.txt", "rb") as f:
             assert f.read() == b"Hey!"
 
-        result = await runner.invoke(inout, ["hello.txt", "-"])
+        result = runner.invoke(inout, ["hello.txt", "-"])
         assert result.output == "Hey!"
         assert result.exit_code == 0
 
 
-@pytest.mark.anyio
-async def test_path_allow_dash(runner):
+def test_path_allow_dash(runner):
     @click.command()
     @click.argument("input", type=click.Path(allow_dash=True))
     def foo(input):
         click.echo(input)
 
-    result = await runner.invoke(foo, ["-"])
+    result = runner.invoke(foo, ["-"])
     assert result.output == "-\n"
     assert result.exit_code == 0
 
 
-@pytest.mark.anyio
-async def test_file_atomics(runner):
+def test_file_atomics(runner):
     @click.command()
     @click.argument("output", type=click.File("wb", atomic=True))
     def inout(output):
@@ -165,24 +155,25 @@ async def test_file_atomics(runner):
     with runner.isolated_filesystem():
         with open("foo.txt", "wb") as f:
             f.write(b"OLD\n")
-        result = await runner.invoke(inout, ["foo.txt"], input="Hey!", catch_exceptions=False)
+        result = runner.invoke(inout, ["foo.txt"], input="Hey!", catch_exceptions=False)
         assert result.output == ""
         assert result.exit_code == 0
         with open("foo.txt", "rb") as f:
             assert f.read() == b"Foo bar baz\n"
 
 
-@pytest.mark.anyio
-async def test_stdout_default(runner):
+def test_stdout_default(runner):
     @click.command()
     @click.argument("output", type=click.File("w"), default="-")
     def inout(output):
         output.write("Foo bar baz\n")
         output.flush()
 
-    result = await runner.invoke(inout, [])
+    result = runner.invoke(inout, [])
     assert not result.exception
     assert result.output == "Foo bar baz\n"
+    assert result.stdout == "Foo bar baz\n"
+    assert not result.stderr
 
 
 @pytest.mark.parametrize(
@@ -196,8 +187,7 @@ async def test_stdout_default(runner):
         (-1, "", ()),
     ],
 )
-@pytest.mark.anyio
-async def test_nargs_envvar(runner, nargs, value, expect):
+def test_nargs_envvar(runner, nargs, value, expect):
     if nargs == -1:
         param = click.argument("arg", envvar="X", nargs=nargs)
     else:
@@ -208,7 +198,7 @@ async def test_nargs_envvar(runner, nargs, value, expect):
     def cmd(arg):
         return arg
 
-    result = await runner.invoke(cmd, env={"X": value}, standalone_mode=False)
+    result = runner.invoke(cmd, env={"X": value}, standalone_mode=False)
 
     if isinstance(expect, str):
         assert isinstance(result.exception, click.BadParameter)
@@ -217,28 +207,26 @@ async def test_nargs_envvar(runner, nargs, value, expect):
         assert result.return_value == expect
 
 
-@pytest.mark.anyio
-async def test_nargs_envvar_only_if_values_empty(runner):
+def test_nargs_envvar_only_if_values_empty(runner):
     @click.command()
     @click.argument("arg", envvar="X", nargs=-1)
     def cli(arg):
         return arg
 
-    result = await runner.invoke(cli, ["a", "b"], standalone_mode=False)
+    result = runner.invoke(cli, ["a", "b"], standalone_mode=False)
     assert result.return_value == ("a", "b")
 
-    result = await runner.invoke(cli, env={"X": "a"}, standalone_mode=False)
+    result = runner.invoke(cli, env={"X": "a"}, standalone_mode=False)
     assert result.return_value == ("a",)
 
 
-@pytest.mark.anyio
-async def test_empty_nargs(runner):
+def test_empty_nargs(runner):
     @click.command()
     @click.argument("arg", nargs=-1)
     def cmd(arg):
         click.echo(f"arg:{'|'.join(arg)}")
 
-    result = await runner.invoke(cmd, [])
+    result = runner.invoke(cmd, [])
     assert result.exit_code == 0
     assert result.output == "arg:\n"
 
@@ -247,59 +235,87 @@ async def test_empty_nargs(runner):
     def cmd2(arg):
         click.echo(f"arg:{'|'.join(arg)}")
 
-    result = await runner.invoke(cmd2, [])
+    result = runner.invoke(cmd2, [])
     assert result.exit_code == 2
     assert "Missing argument 'ARG...'" in result.output
 
 
-@pytest.mark.anyio
-async def test_missing_arg(runner):
+def test_missing_arg(runner):
     @click.command()
     @click.argument("arg")
     def cmd(arg):
         click.echo(f"arg:{arg}")
 
-    result = await runner.invoke(cmd, [])
+    result = runner.invoke(cmd, [])
     assert result.exit_code == 2
     assert "Missing argument 'ARG'." in result.output
 
 
-def test_missing_argument_string_cast():
-    ctx = click.Context(click.Command(""))
-
-    with pytest.raises(click.MissingParameter) as excinfo:
-        click.Argument(["a"], required=True).process_value(ctx, None)
-
-    assert str(excinfo.value) == "Missing parameter: a"
-
-
+@pytest.mark.parametrize(
+    ("value", "expect_missing", "processed_value"),
+    [
+        # Unspecified type of the argument fallback to string, so everything is
+        # processed the click.STRING type.
+        ("", False, ""),
+        ("  ", False, "  "),
+        ("foo", False, "foo"),
+        ("12", False, "12"),
+        (12, False, "12"),
+        (12.1, False, "12.1"),
+        (list(), False, "[]"),
+        (tuple(), False, "()"),
+        (set(), False, "set()"),
+        (frozenset(), False, "frozenset()"),
+        (dict(), False, "{}"),
+        # None is a value that is allowed to be processed by a required argument
+        # because at this stage, the process_value method happens after the default is
+        # applied.
+        (None, False, None),
+        # An UNSET required argument will raise MissingParameter.
+        (UNSET, True, None),
+    ],
+)
 @pytest.mark.anyio
-async def test_implicit_non_required(runner):
+async def test_required_argument(value, expect_missing, processed_value):
+    """Test how a required argument is processing the provided values."""
+    ctx = click.Context(click.Command(""))
+    argument = click.Argument(["a"], required=True)
+
+    if expect_missing:
+        with pytest.raises(click.MissingParameter) as excinfo:
+            await argument.process_value(ctx, value)
+        assert str(excinfo.value) == "Missing parameter: a"
+
+    else:
+        value = await argument.process_value(ctx, value)
+        assert value == processed_value
+
+
+def test_implicit_non_required(runner):
     @click.command()
     @click.argument("f", default="test")
     def cli(f):
         click.echo(f)
 
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert result.exit_code == 0
     assert result.output == "test\n"
 
 
 @pytest.mark.anyio
-async def test_deprecated_usage(runner):
+async def test_deprecated_usage(arunner):
     @click.command()
     @click.argument("f", required=False, deprecated=True)
     def cli(f):
         click.echo(f)
 
-    result = await runner.invoke(cli, ["--help"])
+    result = await arunner.invoke(cli, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0, result.output
     assert "[F!]" in result.output
 
 
 @pytest.mark.parametrize("deprecated", [True, "USE B INSTEAD"])
-@pytest.mark.anyio
-async def test_deprecated_warning(runner, deprecated):
+def test_deprecated_warning(runner, deprecated):
     @click.command()
     @click.argument(
         "my-argument", required=False, deprecated=deprecated, default="default argument"
@@ -308,11 +324,11 @@ async def test_deprecated_warning(runner, deprecated):
         click.echo(f"{my_argument}")
 
     # defaults should not give a deprecated warning
-    result = await runner.invoke(cli, [])
+    result = runner.invoke(cli, [])
     assert result.exit_code == 0, result.output
     assert "is deprecated" not in result.output
 
-    result = await runner.invoke(cli, ["hello"])
+    result = runner.invoke(cli, ["hello"])
     assert result.exit_code == 0, result.output
     assert "argument 'MY_ARGUMENT' is deprecated" in result.output
 
@@ -326,7 +342,7 @@ def test_deprecated_required(runner):
 
 
 @pytest.mark.anyio
-async def test_eat_options(runner):
+async def test_eat_options(arunner):
     @click.command()
     @click.option("-f")
     @click.argument("files", nargs=-1)
@@ -335,15 +351,18 @@ async def test_eat_options(runner):
             click.echo(filename)
         click.echo(f)
 
-    result = await runner.invoke(cmd, ["--", "-foo", "bar"])
+    result = await arunner.invoke(cmd, ["-f", "xx"])
+    assert result.output.splitlines() == ["xx"]
+
+    result = await arunner.invoke(cmd, ["--", "-foo", "bar"])
     assert result.output.splitlines() == ["-foo", "bar", ""]
 
-    result = await runner.invoke(cmd, ["-f", "-x", "--", "-foo", "bar"])
+    result = await arunner.invoke(cmd, ["-f", "-x", "--", "-foo", "bar"])
     assert result.output.splitlines() == ["-foo", "bar", "-x"]
 
 
 @pytest.mark.anyio
-async def test_nargs_star_ordering(runner):
+async def test_nargs_star_ordering(arunner):
     @click.command()
     @click.argument("a", nargs=-1)
     @click.argument("b")
@@ -352,12 +371,11 @@ async def test_nargs_star_ordering(runner):
         for arg in (a, b, c):
             click.echo(arg)
 
-    result = await runner.invoke(cmd, ["a", "b", "c"])
+    result = await arunner.invoke(cmd, ["a", "b", "c"])
     assert result.output.splitlines() == ["('a',)", "b", "c"]
 
 
-@pytest.mark.anyio
-async def test_nargs_specified_plus_star_ordering(runner):
+def test_nargs_specified_plus_star_ordering(runner):
     @click.command()
     @click.argument("a", nargs=-1)
     @click.argument("b")
@@ -366,27 +384,119 @@ async def test_nargs_specified_plus_star_ordering(runner):
         for arg in (a, b, c):
             click.echo(arg)
 
-    result = await runner.invoke(cmd, ["a", "b", "c", "d", "e", "f"])
+    result = runner.invoke(cmd, ["a", "b", "c", "d", "e", "f"])
     assert result.output.splitlines() == ["('a', 'b', 'c')", "d", "('e', 'f')"]
 
 
-@pytest.mark.anyio
-async def test_defaults_for_nargs(runner):
+@pytest.mark.parametrize(
+    ("argument_params", "args", "expected"),
+    [
+        # Any iterable with the same number of arguments as nargs is valid.
+        [{"nargs": 2, "default": (1, 2)}, [], (1, 2)],
+        [{"nargs": 2, "default": (1.1, 2.2)}, [], (1, 2)],
+        [{"nargs": 2, "default": ("1", "2")}, [], (1, 2)],
+        [{"nargs": 2, "default": (None, None)}, [], (None, None)],
+        [{"nargs": 2, "default": [1, 2]}, [], (1, 2)],
+        [{"nargs": 2, "default": {1, 2}}, [], (1, 2)],
+        [{"nargs": 2, "default": frozenset([1, 2])}, [], (1, 2)],
+        [{"nargs": 2, "default": {1: "a", 2: "b"}}, [], (1, 2)],
+        # Empty iterable is valid if default is None.
+        [{"nargs": 2, "default": None}, [], None],
+        # Arguments overrides the default.
+        [{"nargs": 2, "default": (1, 2)}, ["3", "4"], (3, 4)],
+        # Unbounded arguments are allowed to have a default.
+        # See: https://github.com/pallets/click/issues/2164
+        [{"nargs": -1, "default": [42]}, [], (42,)],
+        [{"nargs": -1, "default": None}, [], ()],
+        [{"nargs": -1, "default": {1, 2, 3, 4, 5}}, [], (1, 2, 3, 4, 5)],
+    ],
+)
+def test_good_defaults_for_nargs(runner, argument_params, args, expected):
     @click.command()
-    @click.argument("a", nargs=2, type=int, default=(1, 2))
+    @click.argument("a", type=int, **argument_params)
     def cmd(a):
-        x, y = a
-        click.echo(x + y)
+        click.echo(repr(a), nl=False)
 
-    result = await runner.invoke(cmd, [])
-    assert result.output.strip() == "3"
+    result = runner.invoke(cmd, args)
+    assert result.output == repr(expected)
 
-    result = await runner.invoke(cmd, ["3", "4"])
-    assert result.output.strip() == "7"
 
-    result = await runner.invoke(cmd, ["3"])
-    assert result.exception is not None
-    assert "Argument 'a' takes 2 values." in result.output
+@pytest.mark.parametrize(
+    ("default", "message"),
+    [
+        # Non-iterables defaults.
+        ["Yo", "Error: Invalid value for '[A]...': Value must be an iterable."],
+        ["", "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [True, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [False, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [12, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [7.9, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        # Generator default.
+        [(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        # Unset default.
+        [UNSET, "Error: Missing argument 'A...'."],
+        # Tuples defaults with wrong length.
+        [
+            tuple(),
+            "Error: Invalid value for '[A]...': Takes 2 values but 0 were given.",
+        ],
+        [(1,), "Error: Invalid value for '[A]...': Takes 2 values but 1 was given."],
+        [
+            (1, 2, 3),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Lists defaults with wrong length.
+        [list(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [[1], "Error: Invalid value for '[A]...': Takes 2 values but 1 was given."],
+        [
+            [1, 2, 3],
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Sets defaults with wrong length.
+        [set(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [
+            set([1]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            set([1, 2, 3]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Frozensets defaults with wrong length.
+        [
+            frozenset(),
+            "Error: Invalid value for '[A]...': Takes 2 values but 0 were given.",
+        ],
+        [
+            frozenset([1]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            frozenset([1, 2, 3]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Dictionaries defaults with wrong length.
+        [dict(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [
+            {1: "a"},
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            {1: "a", 2: "b", 3: "c"},
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+    ],
+)
+def test_bad_defaults_for_nargs(runner, default, message):
+    """Some defaults are not valid when nargs is set."""
+
+    @click.command()
+    @click.argument("a", nargs=2, type=int, default=default)
+    def cmd(a):
+        click.echo(repr(a))
+
+    result = runner.invoke(cmd, [])
+    assert message in result.stderr
 
 
 def test_multiple_param_decls_not_allowed(runner):
@@ -403,14 +513,7 @@ def test_multiple_not_allowed():
         click.Argument(["a"], multiple=True)
 
 
-@pytest.mark.parametrize("value", [(), ("a",), ("a", "b", "c")])
-def test_nargs_bad_default(runner, value):
-    with pytest.raises(ValueError, match="nargs=2"):
-        click.Argument(["a"], nargs=2, default=value)
-
-
-@pytest.mark.anyio
-async def test_subcommand_help(runner):
+def test_subcommand_help(runner):
     @click.group()
     @click.argument("name")
     @click.argument("val")
@@ -424,13 +527,13 @@ async def test_subcommand_help(runner):
     def cmd(obj):
         click.echo(f"CMD for {obj['name']} with value {obj['val']}")
 
-    result = await runner.invoke(cli, ["foo", "bar", "cmd", "--help"])
-    assert not result.exception
+    result = runner.invoke(cli, ["foo", "bar", "cmd", "--help"])
+    if result.exception:
+        raise result.exception
     assert "Usage: cli NAME VAL cmd [OPTIONS]" in result.output
 
 
-@pytest.mark.anyio
-async def test_nested_subcommand_help(runner):
+def test_nested_subcommand_help(runner):
     @click.group()
     @click.argument("arg1")
     @click.option("--opt1")
@@ -447,9 +550,8 @@ async def test_nested_subcommand_help(runner):
     def subcmd():
         click.echo("subcommand")
 
-    result = await runner.invoke(cli, ["arg1", "cmd", "arg2", "subcmd", "--help"])
-    if result.exception:
-        raise result.exception
+    result = runner.invoke(cli, ["arg1", "cmd", "arg2", "subcmd", "--help"])
+    assert not result.exception
     assert "Usage: cli ARG1 cmd ARG2 subcmd [OPTIONS]" in result.output
 
 
@@ -482,8 +584,7 @@ def test_when_argument_decorator_is_used_multiple_times_cls_is_preserved():
         ),
     ],
 )
-@pytest.mark.anyio
-async def test_duplicate_names_warning(runner, args_one, args_two):
+def test_duplicate_names_warning(runner, args_one, args_two):
     @click.command()
     @click.argument(*args_one)
     @click.argument(*args_two)
@@ -491,4 +592,4 @@ async def test_duplicate_names_warning(runner, args_one, args_two):
         pass
 
     with pytest.warns(UserWarning):
-        await runner.invoke(cli, [])
+        runner.invoke(cli, [])

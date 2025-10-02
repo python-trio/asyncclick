@@ -1,6 +1,6 @@
 # Unicode Support
 
-```{currentmodule} asyncclick
+```{currentmodule} click
 ```
 
 Click has to take extra care to support Unicode text in different environments.

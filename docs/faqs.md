@@ -37,19 +37,3 @@ Note that I used single quotes above, so my shell is not expanding the environme
 
 If you don't want Click to emulate (as best it can) unix expansion on Windows, pass windows_expand_args=False when calling the CLI.
 Windows command line doesn't do any *, ~, or $ENV expansion. It also doesn't distinguish between double quotes and single quotes (where the later means "don't expand here"). Click emulates the expansion so that the app behaves similarly on both platforms, but doesn't receive information about what quotes were used.
-
-
-## Upgrading to AsyncClick
-
-AsyncClick is mostly backwards compatible. Most methods accept both synchronous
-and async funfctions or callbacks and seamlessly await the result in the latter
-case.
-
-Several interfaces, most notably {meth}`BaseCommand.main` and
-{meth}`Context.invoke`, are now asynchronous.
-
-The {meth}`BaseCommand.__call__` alias invokes the main entry point via
-`anyio.run`. If you already have an async main program, simply use
-``await cmd.main()`` instead of ``cmd()``.
-
-

@@ -35,7 +35,7 @@ Decorators
 
 .. autofunction:: make_pass_decorator
 
-.. autofunction:: click.decorators.pass_meta_key
+.. autofunction:: asyncclick.decorators.pass_meta_key
 
 
 Utilities

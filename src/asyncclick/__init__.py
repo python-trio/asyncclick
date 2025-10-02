@@ -70,8 +70,6 @@ from .utils import get_binary_stream as get_binary_stream
 from .utils import get_text_stream as get_text_stream
 from .utils import open_file as open_file
 
-anyio_backend = "asyncio"
-
 
 def __getattr__(name: str) -> object:
     import warnings
@@ -80,7 +78,7 @@ def __getattr__(name: str) -> object:
         from .core import _BaseCommand
 
         warnings.warn(
-            "'BaseCommand' is deprecated and will be removed in [Async]Click 9.0. Use"
+            "'BaseCommand' is deprecated and will be removed in Click 9.0. Use"
             " 'Command' instead.",
             DeprecationWarning,
             stacklevel=2,
@@ -91,7 +89,7 @@ def __getattr__(name: str) -> object:
         from .core import _MultiCommand
 
         warnings.warn(
-            "'MultiCommand' is deprecated and will be removed in [Async]Click 9.0. Use"
+            "'MultiCommand' is deprecated and will be removed in Click 9.0. Use"
             " 'Group' instead.",
             DeprecationWarning,
             stacklevel=2,
@@ -102,7 +100,7 @@ def __getattr__(name: str) -> object:
         from .parser import _OptionParser
 
         warnings.warn(
-            "'OptionParser' is deprecated and will be removed in [Async]Click 9.0. The"
+            "'OptionParser' is deprecated and will be removed in Click 9.0. The"
             " old parser is available in 'optparse'.",
             DeprecationWarning,
             stacklevel=2,
@@ -115,11 +113,11 @@ def __getattr__(name: str) -> object:
 
         warnings.warn(
             "The '__version__' attribute is deprecated and will be removed in"
-            " [Async]Click 9.1. Use feature detection or"
-            " 'importlib.metadata.version(\"asyncclick\")' instead.",
+            " Click 9.1. Use feature detection or"
+            " 'importlib.metadata.version(\"click\")' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return importlib.metadata.version("asyncclick")
+        return importlib.metadata.version("click")
 
     raise AttributeError(name)

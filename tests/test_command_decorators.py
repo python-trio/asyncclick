@@ -3,19 +3,17 @@ import pytest
 import asyncclick as click
 
 
-@pytest.mark.anyio
-async def test_command_no_parens(runner):
+def test_command_no_parens(runner):
     @click.command
     def cli():
         click.echo("hello")
 
-    result = await runner.invoke(cli)
+    result = runner.invoke(cli)
     assert result.exception is None
     assert result.output == "hello\n"
 
 
-@pytest.mark.anyio
-async def test_custom_command_no_parens(runner):
+def test_custom_command_no_parens(runner):
     class CustomCommand(click.Command):
         pass
 
@@ -30,13 +28,12 @@ async def test_custom_command_no_parens(runner):
     def cli():
         click.echo("hello custom command class")
 
-    result = await runner.invoke(cli)
+    result = runner.invoke(cli)
     assert result.exception is None
     assert result.output == "hello custom command class\n"
 
 
-@pytest.mark.anyio
-async def test_group_no_parens(runner):
+def test_group_no_parens(runner):
     @click.group
     def grp():
         click.echo("grp1")
@@ -53,17 +50,16 @@ async def test_group_no_parens(runner):
     def cmd2():
         click.echo("cmd2")
 
-    result = await runner.invoke(grp, ["cmd1"])
+    result = runner.invoke(grp, ["cmd1"])
     assert result.exception is None
     assert result.output == "grp1\ncmd1\n"
 
-    result = await runner.invoke(grp, ["grp2", "cmd2"])
+    result = runner.invoke(grp, ["grp2", "cmd2"])
     assert result.exception is None
     assert result.output == "grp1\ngrp2\ncmd2\n"
 
 
-@pytest.mark.anyio
-async def test_params_argument(runner):
+def test_params_argument(runner):
     opt = click.Argument(["a"])
 
     @click.command(params=[opt])
@@ -73,7 +69,7 @@ async def test_params_argument(runner):
 
     assert cli.params[0].name == "a"
     assert cli.params[1].name == "b"
-    result = await runner.invoke(cli, ["1", "2"])
+    result = runner.invoke(cli, ["1", "2"])
     assert result.output == "1 2\n"
 
 

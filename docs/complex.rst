@@ -3,7 +3,7 @@
 Complex Applications
 ====================
 
-.. currentmodule:: asyncclick
+.. currentmodule:: click
 
 Click is designed to assist with the creation of complex and simple CLI tools
 alike.  However, the power of its design is the ability to arbitrarily nest
@@ -253,7 +253,7 @@ stores a mapping from subcommand names to the information for importing them.
 
     # in lazy_group.py
     import importlib
-    import click
+    import asyncclick as click
 
     class LazyGroup(click.Group):
         def __init__(self, *args, lazy_subcommands=None, **kwargs):
@@ -299,7 +299,7 @@ subcommands like so:
 .. code-block:: python
 
     # in main.py
-    import click
+    import asyncclick as click
     from lazy_group import LazyGroup
 
     @click.group(
@@ -313,7 +313,7 @@ subcommands like so:
 .. code-block:: python
 
     # in foo.py
-    import click
+    import asyncclick as click
 
     @click.group(help="foo command for lazy example")
     def cli():
@@ -322,7 +322,7 @@ subcommands like so:
 .. code-block:: python
 
     # in bar.py
-    import click
+    import asyncclick as click
     from lazy_group import LazyGroup
 
     @click.group(
@@ -336,7 +336,7 @@ subcommands like so:
 .. code-block:: python
 
     # in baz.py
-    import click
+    import asyncclick as click
 
     @click.group(help="baz command for lazy example")
     def cli():

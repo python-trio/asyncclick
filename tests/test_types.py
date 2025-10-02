@@ -74,15 +74,14 @@ def test_float_range_no_clamp_open():
         (-1, None, None, ()),
     ],
 )
-@pytest.mark.anyio
-async def test_cast_multi_default(runner, nargs, multiple, default, expect):
+def test_cast_multi_default(runner, nargs, multiple, default, expect):
     if nargs == -1:
         param = click.Argument(["a"], nargs=nargs, default=default)
     else:
         param = click.Option(["-a"], nargs=nargs, multiple=multiple, default=default)
 
     cli = click.Command("cli", params=[param], callback=lambda a: a)
-    result = await runner.invoke(cli, standalone_mode=False)
+    result = runner.invoke(cli, standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
 
@@ -96,14 +95,13 @@ async def test_cast_multi_default(runner, nargs, multiple, default, expect):
         (pathlib.Path, pathlib.Path("a", "b", "c.txt")),
     ],
 )
-@pytest.mark.anyio
-async def test_path_type(runner, cls, expect):
+def test_path_type(runner, cls, expect):
     cli = click.Command(
         "cli",
         params=[click.Argument(["p"], type=click.Path(path_type=cls))],
         callback=lambda p: p,
     )
-    result = await runner.invoke(cli, ["a/b/c.txt"], standalone_mode=False)
+    result = runner.invoke(cli, ["a/b/c.txt"], standalone_mode=False)
     assert result.exception is None
     assert result.return_value == expect
 

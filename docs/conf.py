@@ -1,13 +1,12 @@
-import asyncclick as click
 from pallets_sphinx_themes import get_version
 from pallets_sphinx_themes import ProjectLink
 
 # Project --------------------------------------------------------------
 
-project = "AsyncClick"
-copyright = "2014 Pallets, 2019 Matthias Urlichs"
+project = "Click"
+copyright = "2014 Pallets"
 author = "Pallets"
-release, version = get_version("asyncclick")
+release, version = get_version("Click")
 
 # General --------------------------------------------------------------
 
@@ -26,8 +25,8 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "description"
 autodoc_preserve_defaults = True
 extlinks = {
-    "issue": ("https://github.com/python-trio/asyncclick/issues/%s", "#%s"),
-    "pr": ("https://github.com/python-trio/asyncclick/pull/%s", "#%s"),
+    "issue": ("https://github.com/pallets/click/issues/%s", "#%s"),
+    "pr": ("https://github.com/pallets/click/pull/%s", "#%s"),
 }
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
@@ -43,7 +42,6 @@ html_context = {
         ProjectLink("PyPI Releases", "https://pypi.org/project/click/"),
         ProjectLink("Source Code", "https://github.com/pallets/click/"),
         ProjectLink("Issue Tracker", "https://github.com/pallets/click/issues/"),
-        ProjectLink("AsyncClick Fork", "https://github.com/python-trio/asyncclick/"),
         ProjectLink("Chat", "https://discord.gg/pallets"),
     ]
 }
@@ -55,5 +53,5 @@ singlehtml_sidebars = {"index": ["project.html", "localtoc.html", "ethicalads.ht
 html_static_path = ["_static"]
 html_favicon = "_static/click-icon.svg"
 html_logo = "_static/click-logo.svg"
-html_title = f"AsyncClick Documentation ({version})"
+html_title = f"Click Documentation ({version})"
 html_show_sourcelink = False
