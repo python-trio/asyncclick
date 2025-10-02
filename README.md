@@ -53,6 +53,28 @@ Hello, Click!
 Hello, Click!
 ```
 
+## Differences to Click
+
+This async-ized version of Click is mostly backwards compatible for "normal" use:
+you can freely mix sync and async versions of your command handlers and callbacks.
+
+Several advanced methods, most notably :meth:`BaseCommand.main`, and
+:meth:`Context.invoke`, are now asynchronous.
+
+The :meth:`BaseCommand.__call__` alias now invokes the main entry point via
+`anyio.run`. If you already have an async main program, simply use
+``await cmd.main()`` instead of ``cmd()``.
+
+:func:`asyncclick.prompt` is asyncronous and accepts a ``blocking`` parameter
+that switches between "doesn't affect your event loop but has unwanted effects when
+interrupted" (bugfix pending) and "pauses your event loop but is safe to interrupt"
+with Control-C". The latter is the default until we fix that bug.
+
+You cannot use Click and AsyncClick in the same program. This is not a problem
+in practice, as replacing ``import click`` with ``import asyncclick as click``, and
+``from click import ...`` with ``from asyncclick import ...``, should be all that's
+required.
+
 
 ## Donate
 
@@ -64,8 +86,6 @@ donate today][].
 [please donate today]: https://palletsprojects.com/donate
 
 The AsyncClick fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
-It's not a lot of work, so if you'd like to motivate me, donate to the
-charity of your choice and tell me that you've done so. ;-)
 
 ## Contributing
 
