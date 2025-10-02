@@ -17,7 +17,7 @@ dependencies = [
     "colorama; platform_system == 'Windows'",
     "anyio ~= 4.0",
 ]
-version = "8.3.0"
+version = "8.3.0.1"
 
 [project.urls]
 Donate = "https://palletsprojects.com/donate"
