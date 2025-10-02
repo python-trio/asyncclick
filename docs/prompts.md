@@ -16,6 +16,21 @@ local: true
 ---
 ```
 
+## AsyncClick changes
+
+AsyncClick now async-izes :func:`asyncclick.prompt`. This may require changes
+in your program. We are sorry to have to do this in a minor release, but there
+is no way around this change because the validation callback might be async.
+
+On the positive side, :func:`asyncclick.prompt` gained a new parameter ``blocking``.
+When it is set to `False`, interaction with the user no longer blocks the async
+event loop.
+
+However, this currently interacts badly with interrupting the program, e.g. by
+pressing Control-C. As most programs prompt the user first and run async tasks later,
+the default for ``blocking`` is `True` until we can solve the interrupt problem.
+
+
 (option-prompting)=
 
 ## Option Prompts
@@ -74,14 +89,14 @@ To manually ask for user input, you can use the {func}`prompt` function. By defa
 you can ask for any other type. For instance, you can ask for a valid integer:
 
 ```python
-value = click.prompt('Please enter a valid integer', type=int)
+value = await click.prompt('Please enter a valid integer', type=int)
 ```
 
 Additionally, the type will be determined automatically if a default value is provided. For instance, the following will
 only accept floats:
 
 ```python
-value = click.prompt('Please enter a number', default=42.0)
+value = await click.prompt('Please enter a number', default=42.0)
 ```
 
 ## Optional Prompts

@@ -5,6 +5,11 @@ Version 8.3.0
 
 Released 2025-09-15
 
+-   **Important: Breaking asyncclick change**: :func:`asyncclick.prompt` is now
+    async. It accepts a new `blocking` parameter to switch between keeping the
+    async loop running (`False`) and not going belly-up when the user interrupts
+    it using Control-C (`True`). `True` thus is the default (for now).
+
 -   **Improved flag option handling**: Reworked the relationship between ``flag_value``
     and ``default`` parameters for better consistency:
 
