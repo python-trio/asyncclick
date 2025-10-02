@@ -32,6 +32,80 @@ wheels = [
 ]
 
 [[package]]
+name = "asyncclick"
+version = "8.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anyio" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+    { name = "tox" },
+    { name = "tox-uv" },
+]
+docs = [
+    { name = "myst-parser" },
+    { name = "pallets-sphinx-themes" },
+    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "sphinx-tabs" },
+    { name = "sphinxcontrib-log-cabinet" },
+]
+docs-auto = [
+    { name = "sphinx-autobuild" },
+]
+gha-update = [
+    { name = "gha-update", marker = "python_full_version >= '3.12'" },
+]
+pre-commit = [
+    { name = "pre-commit" },
+    { name = "pre-commit-uv" },
+]
+tests = [
+    { name = "pytest" },
+]
+typing = [
+    { name = "mypy" },
+    { name = "pyright" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = "~=4.0" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ruff" },
+    { name = "tox" },
+    { name = "tox-uv" },
+]
+docs = [
+    { name = "myst-parser" },
+    { name = "pallets-sphinx-themes" },
+    { name = "sphinx" },
+    { name = "sphinx-tabs" },
+    { name = "sphinxcontrib-log-cabinet" },
+]
+docs-auto = [{ name = "sphinx-autobuild" }]
+gha-update = [{ name = "gha-update", marker = "python_full_version >= '3.12'" }]
+pre-commit = [
+    { name = "pre-commit" },
+    { name = "pre-commit-uv" },
+]
+tests = [{ name = "pytest" }]
+typing = [
+    { name = "mypy" },
+    { name = "pyright" },
+    { name = "pytest" },
+]
+
+[[package]]
 name = "babel"
 version = "2.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -140,71 +214,13 @@ wheels = [
 [[package]]
 name = "click"
 version = "8.3.0"
-source = { editable = "." }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-    { name = "tox" },
-    { name = "tox-uv" },
-]
-docs = [
-    { name = "myst-parser" },
-    { name = "pallets-sphinx-themes" },
-    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "sphinx-tabs" },
-    { name = "sphinxcontrib-log-cabinet" },
-]
-docs-auto = [
-    { name = "sphinx-autobuild" },
-]
-gha-update = [
-    { name = "gha-update", marker = "python_full_version >= '3.12'" },
-]
-pre-commit = [
-    { name = "pre-commit" },
-    { name = "pre-commit-uv" },
-]
-tests = [
-    { name = "pytest" },
-]
-typing = [
-    { name = "mypy" },
-    { name = "pyright" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "colorama", marker = "sys_platform == 'win32'" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ruff" },
-    { name = "tox" },
-    { name = "tox-uv" },
-]
-docs = [
-    { name = "myst-parser" },
-    { name = "pallets-sphinx-themes" },
-    { name = "sphinx" },
-    { name = "sphinx-tabs" },
-    { name = "sphinxcontrib-log-cabinet" },
-]
-docs-auto = [{ name = "sphinx-autobuild" }]
-gha-update = [{ name = "gha-update", marker = "python_full_version >= '3.12'" }]
-pre-commit = [
-    { name = "pre-commit" },
-    { name = "pre-commit-uv" },
-]
-tests = [{ name = "pytest" }]
-typing = [
-    { name = "mypy" },
-    { name = "pyright" },
-    { name = "pytest" },
+sdist = { url = "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4", size = 276943, upload-time = "2025-09-18T17:32:23.696Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/d3/9dcc0f5797f070ec8edf30fbadfb200e71d9db6b84d211e3b2085a7589a0/click-8.3.0-py3-none-any.whl", hash = "sha256:9b9f285302c6e3064f4330c05f05b81945b2a39544279343e6e7c5f27a9baddc", size = 107295, upload-time = "2025-09-18T17:32:22.42Z" },
 ]
 
 [[package]]

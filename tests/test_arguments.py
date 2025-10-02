@@ -8,6 +8,7 @@ from asyncclick._utils import UNSET
 
 PY2 = False  # churn
 
+
 @pytest.mark.anyio
 async def test_nargs_star(arunner):
     @click.command()
@@ -16,8 +17,8 @@ async def test_nargs_star(arunner):
     def copy(src, dst):
         click.echo(f"src={'|'.join(src)}")
         click.echo(f"dst={dst}")
-        sys.stdin=sys.__stdin__
-        sys.stdout=sys.__stdout__
+        sys.stdin = sys.__stdin__
+        sys.stdout = sys.__stdout__
 
     result = await arunner.invoke(copy, ["foo.txt", "bar.txt", "dir"])
     if result.exception:

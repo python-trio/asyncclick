@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import anyio
 import collections.abc as cabc
 import enum
 import errno
@@ -10,16 +9,18 @@ import sys
 import typing as t
 from collections import abc
 from collections import Counter
-from contextlib import asynccontextmanager
 from contextlib import AbstractContextManager
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
+from contextlib import contextmanager
 from functools import update_wrapper
 from gettext import gettext as _
 from gettext import ngettext
 from inspect import iscoroutine
 from itertools import repeat
 from types import TracebackType
+
+import anyio
 
 from . import types
 from ._utils import FLAG_NEEDS_VALUE
@@ -48,6 +49,8 @@ from .utils import make_str
 from .utils import PacifyFlushWrapper
 
 if t.TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from .shell_completion import CompletionItem
 
 F = t.TypeVar("F", bound="t.Callable[..., t.Any]")
@@ -455,7 +458,7 @@ class Context:
         )
         return self._protected_args
 
-    async def to_info_dict(self) -> t.Dict[str, t.Any]:
+    async def to_info_dict(self) -> dict[str, t.Any]:
         """Gather information that could be useful for a tool generating
         user-facing documentation. This traverses the entire CLI
         structure.
@@ -490,7 +493,9 @@ class Context:
         self._depth -= 1
         exit_result: bool | None = None
         if self._depth == 0:
-            exit_result = await self._aclose_with_exception_info(exc_type, exc_value, tb)
+            exit_result = await self._aclose_with_exception_info(
+                exc_type, exc_value, tb
+            )
         pop_context()
         return exit_result
 
@@ -603,7 +608,9 @@ class Context:
         """
         return self._exit_stack.enter_context(context_manager)
 
-    def with_async_resource(self, context_manager: t.AsyncContextManager[V]) -> "t.Awaitable[V]":
+    def with_async_resource(
+        self, context_manager: t.AsyncContextManager[V]
+    ) -> t.Awaitable[V]:
         """Register a resource as if it were used in an ``async with``
         statement. The resource will be cleaned up when the context is
         popped.
@@ -642,11 +649,13 @@ class Context:
 
         :param f: The function to execute on teardown.
         """
+
         async def _f():
             res = f()
             if iscoroutine(res):
                 res = await res
             return res
+
         return self._exit_stack.push_async_callback(_f)
 
     async def aclose(self) -> None:
@@ -669,7 +678,9 @@ class Context:
 
         :return: Whatever ``exit_stack.__exit__()`` returns.
         """
-        exit_result = await t.cast(t.AsyncContextManager[t.Any], self._exit_stack).__aexit__(exc_type, exc_value, tb)
+        exit_result = await t.cast(
+            t.AsyncContextManager[t.Any], self._exit_stack
+        ).__aexit__(exc_type, exc_value, tb)
         # In case the context is reused, create a new exit stack.
         self._exit_stack = AsyncExitStack()
 
@@ -796,14 +807,24 @@ class Context:
 
     @t.overload
     async def invoke(
-        self, callback: t.Callable[..., V|Awaitable[V]], /, *args: t.Any, **kwargs: t.Any
+        self,
+        callback: t.Callable[..., V | Awaitable[V]],
+        /,
+        *args: t.Any,
+        **kwargs: t.Any,
     ) -> V: ...
 
     @t.overload
-    async def invoke(self, callback: Command, /, *args: t.Any, **kwargs: t.Any) -> t.Any: ...
+    async def invoke(
+        self, callback: Command, /, *args: t.Any, **kwargs: t.Any
+    ) -> t.Any: ...
 
     async def invoke(
-        self, callback: Command | t.Callable[..., V|Awaitable[V]], /, *args: t.Any, **kwargs: t.Any
+        self,
+        callback: Command | t.Callable[..., V | Awaitable[V]],
+        /,
+        *args: t.Any,
+        **kwargs: t.Any,
     ) -> t.Any | V:
         """Invokes a command callback in exactly the way it expects.  There
         are two ways to invoke this method:
@@ -1497,7 +1518,13 @@ class Command:
         rv = await shell_complete(self, ctx_args, prog_name, complete_var, instruction)
         sys.exit(rv)
 
-    def __call__(self, *args: t.Any, _anyio_backend: t.Optional[str] = None, _anyio_backend_options: t.Dict[str, t.Any] = {}, **kwargs: t.Any) -> t.Any:
+    def __call__(
+        self,
+        *args: t.Any,
+        _anyio_backend: str | None = None,
+        _anyio_backend_options: dict[str, t.Any] | None = None,
+        **kwargs: t.Any,
+    ) -> t.Any:
         """Calling the command runs it in a new :mod:`anyio` event loop.
 
         If you are already inside an async event loop, call
@@ -1511,14 +1538,19 @@ class Command:
 
         """
         main = self.main
-        opts:t.Dict[str, t.Any] = {}
+        opts: dict[str, t.Any] = {}
         if _anyio_backend:
             opts["backend"] = _anyio_backend
         if _anyio_backend_options:
             opts["backend_options"] = _anyio_backend_options
         return anyio.run(self._main, main, args, kwargs, **opts)
 
-    async def _main(self, main:t.Callable[..., t.Awaitable[V]], args: t.List[t.Any], kwargs: t.Dict[str, t.Any]) -> V:
+    async def _main(
+        self,
+        main: t.Callable[..., t.Awaitable[V]],
+        args: list[t.Any],
+        kwargs: dict[str, t.Any],
+    ) -> V:
         return await main(*args, **kwargs)
 
 

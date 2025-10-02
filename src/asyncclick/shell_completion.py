@@ -268,7 +268,9 @@ class ShellComplete:
         """
         raise NotImplementedError
 
-    async def get_completions(self, args: list[str], incomplete: str) -> list[CompletionItem]:
+    async def get_completions(
+        self, args: list[str], incomplete: str
+    ) -> list[CompletionItem]:
         """Determine the context and last complete command or parameter
         from the complete args. Call that object's ``shell_complete``
         method to get the completions for the incomplete value.
