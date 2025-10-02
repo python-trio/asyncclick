@@ -50,6 +50,7 @@ from .utils import PacifyFlushWrapper
 
 if t.TYPE_CHECKING:
     from collections.abc import Awaitable
+    from typing import Any
 
     from .shell_completion import CompletionItem
 
@@ -650,7 +651,7 @@ class Context:
         :param f: The function to execute on teardown.
         """
 
-        async def _f():
+        async def _f() -> Any:
             res = f()
             if iscoroutine(res):
                 res = await res
@@ -1525,7 +1526,7 @@ class Command:
         _anyio_backend_options: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> t.Any:
-        """Calling the command runs it in a new :mod:`anyio` event loop.
+        """Calling the command directly runs it in a new :mod:`anyio` event loop.
 
         If you are already inside an async event loop, call
         ``await`` :meth:`main` instead.
@@ -1543,14 +1544,14 @@ class Command:
             opts["backend"] = _anyio_backend
         if _anyio_backend_options:
             opts["backend_options"] = _anyio_backend_options
-        return anyio.run(self._main, main, args, kwargs, **opts)
+        return anyio.run(self.main, main, args, kwargs, **opts)  # type:ignore
 
     async def _main(
         self,
-        main: t.Callable[..., t.Awaitable[V]],
+        main: t.Callable[..., t.Awaitable[t.Any]],
         args: list[t.Any],
         kwargs: dict[str, t.Any],
-    ) -> V:
+    ) -> t.Any:
         return await main(*args, **kwargs)
 
 

@@ -50,7 +50,9 @@ def pass_obj(f: t.Callable[te.Concatenate[T, P], R]) -> t.Callable[P, R]:
 
 def make_pass_decorator(
     object_type: type[T], ensure: bool = False
-) -> t.Callable[[t.Callable[te.Concatenate[T, P], R]], t.Callable[P, R]]:
+) -> t.Callable[
+    [t.Callable[te.Concatenate[T, P], R]], t.Callable[P, t.Coroutine[t.Any, t.Any, R]]
+]:
     """Given an object type this creates a decorator that will work
     similar to :func:`pass_obj` but instead of passing the object of the
     current context, it will find the innermost context of type
@@ -76,7 +78,7 @@ def make_pass_decorator(
     def decorator(
         f: t.Callable[te.Concatenate[T, P], R],
     ) -> t.Callable[P, t.Coroutine[t.Any, t.Any, R]]:
-        def new_func(*args: P.args, **kwargs: P.kwargs) -> R:
+        def new_func(*args: P.args, **kwargs: P.kwargs) -> t.Coroutine[t.Any, t.Any, R]:
             ctx = get_current_context()
 
             obj: T | None
@@ -101,7 +103,9 @@ def make_pass_decorator(
 
 def pass_meta_key(
     key: str, *, doc_description: str | None = None
-) -> t.Callable[[t.Callable[te.Concatenate[T, P], R]], t.Callable[P, R]]:
+) -> t.Callable[
+    [t.Callable[te.Concatenate[T, P], R]], t.Callable[P, t.Coroutine[t.Any, t.Any, R]]
+]:
     """Create a decorator that passes a key from
     :attr:`click.Context.meta` as the first argument to the decorated
     function.

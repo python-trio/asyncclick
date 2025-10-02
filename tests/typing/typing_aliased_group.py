@@ -19,11 +19,11 @@ class AliasedGroup(click.Group):
             return click.Group.get_command(self, ctx, matches[0])
         ctx.fail(f"Too many matches: {', '.join(sorted(matches))}")
 
-    def resolve_command(
+    async def resolve_command(
         self, ctx: click.Context, args: list[str]
     ) -> tuple[str | None, click.Command, list[str]]:
         # always return the full command name
-        _, cmd, args = super().resolve_command(ctx, args)
+        _, cmd, args = await super().resolve_command(ctx, args)
         assert cmd is not None
         return cmd.name, cmd, args
 

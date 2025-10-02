@@ -24,8 +24,6 @@ from .utils import echo
 from .utils import LazyFile
 
 if t.TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from ._termui_impl import ProgressBar
 
 V = t.TypeVar("V")
@@ -173,8 +171,8 @@ async def prompt(
             return prompt_func(text)
     else:
 
-        def run_prompt_func(text: str) -> Awaitable[str]:
-            return anyio.to_thread.run_sync(prompt_func, text)
+        async def run_prompt_func(text: str) -> str:
+            return await anyio.to_thread.run_sync(prompt_func, text)
 
     if value_proc is None:
         value_proc = convert_type(type, default)
