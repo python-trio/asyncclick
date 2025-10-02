@@ -4,31 +4,26 @@ from unittest import mock
 import pytest
 
 import asyncclick as click
+from asyncclick._utils import UNSET
 
 PY2 = False  # churn
 
-def test_nargs_star(runner):
+@pytest.mark.anyio
+async def test_nargs_star(arunner):
     @click.command()
     @click.argument("src", nargs=-1)
     @click.argument("dst")
     def copy(src, dst):
         click.echo(f"src={'|'.join(src)}")
         click.echo(f"dst={dst}")
+        sys.stdin=sys.__stdin__
+        sys.stdout=sys.__stdout__
 
-    result = runner.invoke(copy, ["foo.txt", "bar.txt", "dir"])
+    result = await arunner.invoke(copy, ["foo.txt", "bar.txt", "dir"])
     if result.exception:
         raise result.exception
     assert not result.exception
     assert result.output.splitlines() == ["src=foo.txt|bar.txt", "dst=dir"]
-
-
-def test_argument_unbounded_nargs_cant_have_default(runner):
-    with pytest.raises(TypeError, match="nargs=-1"):
-
-        @click.command()
-        @click.argument("src", nargs=-1, default=["42"])
-        def copy(src):
-            pass
 
 
 def test_nargs_tup(runner):
@@ -66,6 +61,15 @@ def test_nargs_tup_composite(runner, opts):
     assert result.output.splitlines() == ["name=peter id=1"]
 
 
+def test_nargs_mismatch_with_tuple_type():
+    with pytest.raises(ValueError, match="nargs.*must be 2.*but it was 3"):
+
+        @click.command()
+        @click.argument("test", type=(str, int), nargs=3)
+        def cli(_):
+            pass
+
+
 def test_nargs_err(runner):
     @click.command()
     @click.argument("x")
@@ -85,9 +89,9 @@ def test_bytes_args(runner, monkeypatch):
     @click.command()
     @click.argument("arg")
     def from_bytes(arg):
-        assert isinstance(
-            arg, str
-        ), "UTF-8 encoded argument should be implicitly converted to Unicode"
+        assert isinstance(arg, str), (
+            "UTF-8 encoded argument should be implicitly converted to Unicode"
+        )
 
     # Simulate empty locale environment variables
     monkeypatch.setattr(sys, "getfilesystemencoding", lambda: "utf-8")
@@ -168,6 +172,8 @@ def test_stdout_default(runner):
     result = runner.invoke(inout, [])
     assert not result.exception
     assert result.output == "Foo bar baz\n"
+    assert result.stdout == "Foo bar baz\n"
+    assert not result.stderr
 
 
 @pytest.mark.parametrize(
@@ -245,13 +251,44 @@ def test_missing_arg(runner):
     assert "Missing argument 'ARG'." in result.output
 
 
-def test_missing_argument_string_cast():
+@pytest.mark.parametrize(
+    ("value", "expect_missing", "processed_value"),
+    [
+        # Unspecified type of the argument fallback to string, so everything is
+        # processed the click.STRING type.
+        ("", False, ""),
+        ("  ", False, "  "),
+        ("foo", False, "foo"),
+        ("12", False, "12"),
+        (12, False, "12"),
+        (12.1, False, "12.1"),
+        (list(), False, "[]"),
+        (tuple(), False, "()"),
+        (set(), False, "set()"),
+        (frozenset(), False, "frozenset()"),
+        (dict(), False, "{}"),
+        # None is a value that is allowed to be processed by a required argument
+        # because at this stage, the process_value method happens after the default is
+        # applied.
+        (None, False, None),
+        # An UNSET required argument will raise MissingParameter.
+        (UNSET, True, None),
+    ],
+)
+@pytest.mark.anyio
+async def test_required_argument(value, expect_missing, processed_value):
+    """Test how a required argument is processing the provided values."""
     ctx = click.Context(click.Command(""))
+    argument = click.Argument(["a"], required=True)
 
-    with pytest.raises(click.MissingParameter) as excinfo:
-        click.Argument(["a"], required=True).process_value(ctx, None)
+    if expect_missing:
+        with pytest.raises(click.MissingParameter) as excinfo:
+            await argument.process_value(ctx, value)
+        assert str(excinfo.value) == "Missing parameter: a"
 
-    assert str(excinfo.value) == "Missing parameter: a"
+    else:
+        value = await argument.process_value(ctx, value)
+        assert value == processed_value
 
 
 def test_implicit_non_required(runner):
@@ -265,7 +302,47 @@ def test_implicit_non_required(runner):
     assert result.output == "test\n"
 
 
-def test_eat_options(runner):
+@pytest.mark.anyio
+async def test_deprecated_usage(arunner):
+    @click.command()
+    @click.argument("f", required=False, deprecated=True)
+    def cli(f):
+        click.echo(f)
+
+    result = await arunner.invoke(cli, ["--help"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "[F!]" in result.output
+
+
+@pytest.mark.parametrize("deprecated", [True, "USE B INSTEAD"])
+def test_deprecated_warning(runner, deprecated):
+    @click.command()
+    @click.argument(
+        "my-argument", required=False, deprecated=deprecated, default="default argument"
+    )
+    def cli(my_argument: str):
+        click.echo(f"{my_argument}")
+
+    # defaults should not give a deprecated warning
+    result = runner.invoke(cli, [])
+    assert result.exit_code == 0, result.output
+    assert "is deprecated" not in result.output
+
+    result = runner.invoke(cli, ["hello"])
+    assert result.exit_code == 0, result.output
+    assert "argument 'MY_ARGUMENT' is deprecated" in result.output
+
+    if isinstance(deprecated, str):
+        assert deprecated in result.output
+
+
+def test_deprecated_required(runner):
+    with pytest.raises(ValueError, match="is deprecated and still required"):
+        click.Argument(["a"], required=True, deprecated=True)
+
+
+@pytest.mark.anyio
+async def test_eat_options(arunner):
     @click.command()
     @click.option("-f")
     @click.argument("files", nargs=-1)
@@ -274,14 +351,18 @@ def test_eat_options(runner):
             click.echo(filename)
         click.echo(f)
 
-    result = runner.invoke(cmd, ["--", "-foo", "bar"])
+    result = await arunner.invoke(cmd, ["-f", "xx"])
+    assert result.output.splitlines() == ["xx"]
+
+    result = await arunner.invoke(cmd, ["--", "-foo", "bar"])
     assert result.output.splitlines() == ["-foo", "bar", ""]
 
-    result = runner.invoke(cmd, ["-f", "-x", "--", "-foo", "bar"])
+    result = await arunner.invoke(cmd, ["-f", "-x", "--", "-foo", "bar"])
     assert result.output.splitlines() == ["-foo", "bar", "-x"]
 
 
-def test_nargs_star_ordering(runner):
+@pytest.mark.anyio
+async def test_nargs_star_ordering(arunner):
     @click.command()
     @click.argument("a", nargs=-1)
     @click.argument("b")
@@ -290,7 +371,7 @@ def test_nargs_star_ordering(runner):
         for arg in (a, b, c):
             click.echo(arg)
 
-    result = runner.invoke(cmd, ["a", "b", "c"])
+    result = await arunner.invoke(cmd, ["a", "b", "c"])
     assert result.output.splitlines() == ["('a',)", "b", "c"]
 
 
@@ -307,22 +388,115 @@ def test_nargs_specified_plus_star_ordering(runner):
     assert result.output.splitlines() == ["('a', 'b', 'c')", "d", "('e', 'f')"]
 
 
-def test_defaults_for_nargs(runner):
+@pytest.mark.parametrize(
+    ("argument_params", "args", "expected"),
+    [
+        # Any iterable with the same number of arguments as nargs is valid.
+        [{"nargs": 2, "default": (1, 2)}, [], (1, 2)],
+        [{"nargs": 2, "default": (1.1, 2.2)}, [], (1, 2)],
+        [{"nargs": 2, "default": ("1", "2")}, [], (1, 2)],
+        [{"nargs": 2, "default": (None, None)}, [], (None, None)],
+        [{"nargs": 2, "default": [1, 2]}, [], (1, 2)],
+        [{"nargs": 2, "default": {1, 2}}, [], (1, 2)],
+        [{"nargs": 2, "default": frozenset([1, 2])}, [], (1, 2)],
+        [{"nargs": 2, "default": {1: "a", 2: "b"}}, [], (1, 2)],
+        # Empty iterable is valid if default is None.
+        [{"nargs": 2, "default": None}, [], None],
+        # Arguments overrides the default.
+        [{"nargs": 2, "default": (1, 2)}, ["3", "4"], (3, 4)],
+        # Unbounded arguments are allowed to have a default.
+        # See: https://github.com/pallets/click/issues/2164
+        [{"nargs": -1, "default": [42]}, [], (42,)],
+        [{"nargs": -1, "default": None}, [], ()],
+        [{"nargs": -1, "default": {1, 2, 3, 4, 5}}, [], (1, 2, 3, 4, 5)],
+    ],
+)
+def test_good_defaults_for_nargs(runner, argument_params, args, expected):
     @click.command()
-    @click.argument("a", nargs=2, type=int, default=(1, 2))
+    @click.argument("a", type=int, **argument_params)
     def cmd(a):
-        x, y = a
-        click.echo(x + y)
+        click.echo(repr(a), nl=False)
+
+    result = runner.invoke(cmd, args)
+    assert result.output == repr(expected)
+
+
+@pytest.mark.parametrize(
+    ("default", "message"),
+    [
+        # Non-iterables defaults.
+        ["Yo", "Error: Invalid value for '[A]...': Value must be an iterable."],
+        ["", "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [True, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [False, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [12, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        [7.9, "Error: Invalid value for '[A]...': Value must be an iterable."],
+        # Generator default.
+        [(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        # Unset default.
+        [UNSET, "Error: Missing argument 'A...'."],
+        # Tuples defaults with wrong length.
+        [
+            tuple(),
+            "Error: Invalid value for '[A]...': Takes 2 values but 0 were given.",
+        ],
+        [(1,), "Error: Invalid value for '[A]...': Takes 2 values but 1 was given."],
+        [
+            (1, 2, 3),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Lists defaults with wrong length.
+        [list(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [[1], "Error: Invalid value for '[A]...': Takes 2 values but 1 was given."],
+        [
+            [1, 2, 3],
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Sets defaults with wrong length.
+        [set(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [
+            set([1]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            set([1, 2, 3]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Frozensets defaults with wrong length.
+        [
+            frozenset(),
+            "Error: Invalid value for '[A]...': Takes 2 values but 0 were given.",
+        ],
+        [
+            frozenset([1]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            frozenset([1, 2, 3]),
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+        # Dictionaries defaults with wrong length.
+        [dict(), "Error: Invalid value for '[A]...': Takes 2 values but 0 were given."],
+        [
+            {1: "a"},
+            "Error: Invalid value for '[A]...': Takes 2 values but 1 was given.",
+        ],
+        [
+            {1: "a", 2: "b", 3: "c"},
+            "Error: Invalid value for '[A]...': Takes 2 values but 3 were given.",
+        ],
+    ],
+)
+def test_bad_defaults_for_nargs(runner, default, message):
+    """Some defaults are not valid when nargs is set."""
+
+    @click.command()
+    @click.argument("a", nargs=2, type=int, default=default)
+    def cmd(a):
+        click.echo(repr(a))
 
     result = runner.invoke(cmd, [])
-    assert result.output.strip() == "3"
-
-    result = runner.invoke(cmd, ["3", "4"])
-    assert result.output.strip() == "7"
-
-    result = runner.invoke(cmd, ["3"])
-    assert result.exception is not None
-    assert "Argument 'a' takes 2 values." in result.output
+    assert message in result.stderr
 
 
 def test_multiple_param_decls_not_allowed(runner):
@@ -337,12 +511,6 @@ def test_multiple_param_decls_not_allowed(runner):
 def test_multiple_not_allowed():
     with pytest.raises(TypeError, match="multiple"):
         click.Argument(["a"], multiple=True)
-
-
-@pytest.mark.parametrize("value", [(), ("a",), ("a", "b", "c")])
-def test_nargs_bad_default(runner, value):
-    with pytest.raises(ValueError, match="nargs=2"):
-        click.Argument(["a"], nargs=2, default=value)
 
 
 def test_subcommand_help(runner):
@@ -405,3 +573,23 @@ def test_when_argument_decorator_is_used_multiple_times_cls_is_preserved():
 
     assert isinstance(foo.params[0], CustomArgument)
     assert isinstance(bar.params[0], CustomArgument)
+
+
+@pytest.mark.parametrize(
+    "args_one,args_two",
+    [
+        (
+            ("aardvark",),
+            ("aardvark",),
+        ),
+    ],
+)
+def test_duplicate_names_warning(runner, args_one, args_two):
+    @click.command()
+    @click.argument(*args_one)
+    @click.argument(*args_two)
+    def cli(one, two):
+        pass
+
+    with pytest.warns(UserWarning):
+        runner.invoke(cli, [])

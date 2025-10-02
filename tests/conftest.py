@@ -26,3 +26,7 @@ class SyncCliRunner(CliRunner):
 @pytest.fixture(scope="function")
 def runner(request):
     return SyncCliRunner()
+
+@pytest.fixture(scope="function")
+def arunner(request):
+    return CliRunner()

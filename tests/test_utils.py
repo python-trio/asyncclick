@@ -1,8 +1,17 @@
 import os
 import pathlib
 import stat
+import subprocess
 import sys
+from collections import namedtuple
+from contextlib import nullcontext
+from decimal import Decimal
+from fractions import Fraction
+from functools import partial
 from io import StringIO
+from pathlib import Path
+from tempfile import tempdir
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +19,55 @@ import asyncclick as click
 import asyncclick._termui_impl
 import asyncclick.utils
 from asyncclick._compat import WIN
+from asyncclick._utils import UNSET
+
+
+def test_unset_sentinel():
+    value = UNSET
+
+    assert value
+    assert value is UNSET
+    assert value == UNSET
+    assert repr(value) == "Sentinel.UNSET"
+    assert str(value) == "Sentinel.UNSET"
+    assert bool(value) is True
+
+    # Try all native Python values that can be falsy or truthy.
+    # See: https://docs.python.org/3/library/stdtypes.html#truth-value-testing
+    real_values = (
+        None,
+        True,
+        False,
+        0,
+        1,
+        0.0,
+        1.0,
+        0j,
+        1j,
+        Decimal(0),
+        Decimal(1),
+        Fraction(0, 1),
+        Fraction(1, 1),
+        "",
+        "a",
+        "UNSET",
+        "Sentinel.UNSET",
+        [1],
+        (1),
+        {1: "a"},
+        set(),
+        set([1]),
+        frozenset(),
+        frozenset([1]),
+        range(0),
+        range(1),
+    )
+
+    for real_value in real_values:
+        assert value != real_value
+        assert value is not real_value
+
+    assert value not in real_values
 
 
 def test_echo(runner):
@@ -106,7 +164,7 @@ def test_filename_formatting():
     assert click.format_filename(b"/x/foo.txt") == "/x/foo.txt"
     assert click.format_filename("/x/foo.txt") == "/x/foo.txt"
     assert click.format_filename("/x/foo.txt", shorten=True) == "foo.txt"
-    assert click.format_filename(b"/x/\xff.txt", shorten=True) == "�.txt"
+    assert click.format_filename("/x/\ufffd.txt", shorten=True) == "�.txt"
 
 
 def test_prompts(runner):
@@ -158,19 +216,33 @@ def test_confirm_repeat(runner):
 
 
 @pytest.mark.skipif(WIN, reason="Different behavior on windows.")
-def test_prompts_abort(monkeypatch, capsys):
+@pytest.mark.anyio
+async def test_prompts_abort(monkeypatch, capsys):
     def f(_):
         raise KeyboardInterrupt()
 
     monkeypatch.setattr("asyncclick.termui.hidden_prompt_func", f)
 
     try:
-        click.prompt("Password", hide_input=True)
+        await click.prompt("Password", hide_input=True)
     except click.Abort:
         click.echo("interrupted")
 
     out, err = capsys.readouterr()
     assert out == "Password:\ninterrupted\n"
+
+
+def test_prompts_eof(runner):
+    """If too few lines of input are given, prompt should exit, not hang."""
+
+    @click.command
+    async def echo():
+        for _ in range(3):
+            click.echo(await click.prompt("", type=int))
+
+    # only provide two lines of input for three prompts
+    result = runner.invoke(echo, input="1\n2\n")
+    assert result.exit_code == 1
 
 
 def _test_gen_func():
@@ -180,31 +252,172 @@ def _test_gen_func():
     yield "abc"
 
 
-@pytest.mark.parametrize("cat", ["cat", "cat ", "cat "])
+def _test_gen_func_fails():
+    yield "test"
+    raise RuntimeError("This is a test.")
+
+
+def _test_gen_func_echo(file=None):
+    yield "test"
+    click.echo("hello", file=file)
+    yield "test"
+
+
+def _test_simulate_keyboard_interrupt(file=None):
+    yield "output_before_keyboard_interrupt"
+    raise KeyboardInterrupt()
+
+
+EchoViaPagerTest = namedtuple(
+    "EchoViaPagerTest",
+    (
+        "description",
+        "test_input",
+        "expected_pager",
+        "expected_stdout",
+        "expected_stderr",
+        "expected_error",
+    ),
+)
+
+
+@pytest.mark.skipif(WIN, reason="Different behavior on windows.")
+@pytest.mark.parametrize(
+    "pager_cmd", ["cat", "cat ", " cat ", "less", " less", " less "]
+)
 @pytest.mark.parametrize(
     "test",
     [
-        # We need lambda here, because pytest will
-        # reuse the parameters, and then the generators
-        # are already used and will not yield anymore
-        ("just text\n", lambda: "just text"),
-        ("iterable\n", lambda: ["itera", "ble"]),
-        ("abcabc\n", lambda: _test_gen_func),
-        ("abcabc\n", lambda: _test_gen_func()),
-        ("012345\n", lambda: (c for c in range(6))),
+        # We need to pass a parameter function instead of a plain param
+        # as pytest.mark.parametrize will reuse the parameters causing the
+        # generators to be used up so they will not yield anymore
+        EchoViaPagerTest(
+            description="Plain string argument",
+            test_input=lambda: "just text",
+            expected_pager="just text\n",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="Iterable argument",
+            test_input=lambda: ["itera", "ble"],
+            expected_pager="iterable\n",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="Generator function argument",
+            test_input=lambda: _test_gen_func,
+            expected_pager="abcabc\n",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="String generator argument",
+            test_input=lambda: _test_gen_func(),
+            expected_pager="abcabc\n",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="Number generator expression argument",
+            test_input=lambda: (c for c in range(6)),
+            expected_pager="012345\n",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="Exception in generator function argument",
+            test_input=lambda: _test_gen_func_fails,
+            # Because generator throws early on, the pager did not have
+            # a chance yet to write the file.
+            expected_pager="",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=RuntimeError,
+        ),
+        EchoViaPagerTest(
+            description="Exception in generator argument",
+            test_input=lambda: _test_gen_func_fails,
+            # Because generator throws early on, the pager did not have a
+            # chance yet to write the file.
+            expected_pager="",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=RuntimeError,
+        ),
+        EchoViaPagerTest(
+            description="Keyboard interrupt should not terminate the pager",
+            test_input=lambda: _test_simulate_keyboard_interrupt(),
+            # Due to the keyboard interrupt during pager execution, click program
+            # should abort, but the pager should stay open.
+            # This allows users to cancel the program and search in the pager
+            # output, before they decide to terminate the pager.
+            expected_pager="output_before_keyboard_interrupt",
+            expected_stdout="",
+            expected_stderr="",
+            expected_error=KeyboardInterrupt,
+        ),
+        EchoViaPagerTest(
+            description="Writing to stdout during generator execution",
+            test_input=lambda: _test_gen_func_echo(),
+            expected_pager="testtest\n",
+            expected_stdout="hello\n",
+            expected_stderr="",
+            expected_error=None,
+        ),
+        EchoViaPagerTest(
+            description="Writing to stderr during generator execution",
+            test_input=lambda: _test_gen_func_echo(file=sys.stderr),
+            expected_pager="testtest\n",
+            expected_stdout="",
+            expected_stderr="hello\n",
+            expected_error=None,
+        ),
     ],
 )
-def test_echo_via_pager(monkeypatch, capfd, cat, test):
-    monkeypatch.setitem(os.environ, "PAGER", cat)
+def test_echo_via_pager(monkeypatch, capfd, pager_cmd, test):
+    monkeypatch.setitem(os.environ, "PAGER", pager_cmd)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda x: True)
 
-    expected_output = test[0]
-    test_input = test[1]()
+    test_input = test.test_input()
+    expected_pager = test.expected_pager
+    expected_stdout = test.expected_stdout
+    expected_stderr = test.expected_stderr
+    expected_error = test.expected_error
 
-    click.echo_via_pager(test_input)
+    check_raise = pytest.raises(expected_error) if expected_error else nullcontext()
+
+    pager_out_tmp = Path(tempdir) / "pager_out.txt"
+    pager_out_tmp.unlink(missing_ok=True)
+    with pager_out_tmp.open("w") as f:
+        force_subprocess_stdout = patch.object(
+            subprocess,
+            "Popen",
+            partial(subprocess.Popen, stdout=f),
+        )
+        with force_subprocess_stdout:
+            with check_raise:
+                click.echo_via_pager(test_input)
 
     out, err = capfd.readouterr()
-    assert out == expected_output
+
+    pager = pager_out_tmp.read_text()
+
+    assert pager == expected_pager, (
+        f"Unexpected pager output in test case '{test.description}'"
+    )
+    assert out == expected_stdout, (
+        f"Unexpected stdout in test case '{test.description}'"
+    )
+    assert err == expected_stderr, (
+        f"Unexpected stderr in test case '{test.description}'"
+    )
 
 
 def test_echo_color_flag(monkeypatch, capfd):
@@ -241,15 +454,17 @@ def test_echo_color_flag(monkeypatch, capfd):
     assert stream.getvalue() == f"{styled_text}\n"
 
 
-def test_prompt_cast_default(capfd, monkeypatch):
+@pytest.mark.anyio
+async def test_prompt_cast_default(capfd, monkeypatch):
     monkeypatch.setattr(sys, "stdin", StringIO("\n"))
-    value = click.prompt("value", default="100", type=int)
+    value = await click.prompt("value", default="100", type=int)
     capfd.readouterr()
-    assert type(value) is int  # noqa E721
+    assert isinstance(value, int)
 
 
 @pytest.mark.skipif(WIN, reason="Test too complex to make work windows.")
-def test_echo_writing_to_standard_error(capfd, monkeypatch):
+@pytest.mark.anyio
+async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     def emulate_input(text):
         """Emulate keyboard input."""
         monkeypatch.setattr(sys, "stdin", StringIO(text))
@@ -265,13 +480,13 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert err == "Echo to standard error\n"
 
     emulate_input("asdlkj\n")
-    click.prompt("Prompt to stdin")
+    await click.prompt("Prompt to stdin")
     out, err = capfd.readouterr()
     assert out == "Prompt to stdin: "
     assert err == ""
 
     emulate_input("asdlkj\n")
-    click.prompt("Prompt to stderr", err=True)
+    await click.prompt("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
     assert out == " "
     assert err == "Prompt to stderr:"
@@ -427,7 +642,7 @@ def test_iter_keepopenfile(tmpdir):
     p = tmpdir.mkdir("testdir").join("testfile")
     p.write("\n".join(expected))
     with p.open() as f:
-        for e_line, a_line in zip(expected, asyncclick.utils.KeepOpenFile(f)):
+        for e_line, a_line in zip(expected, asyncclick.utils.KeepOpenFile(f), strict=False):
             assert e_line == a_line.strip()
 
 
@@ -437,7 +652,7 @@ def test_iter_lazyfile(tmpdir):
     p.write("\n".join(expected))
     with p.open() as f:
         with asyncclick.utils.LazyFile(f.name) as lf:
-            for e_line, a_line in zip(expected, lf):
+            for e_line, a_line in zip(expected, lf, strict=False):
                 assert e_line == a_line.strip()
 
 
@@ -460,19 +675,19 @@ class MockMain:
     ],
 )
 def test_detect_program_name(path, main, expected):
-    assert click.utils._detect_program_name(path, _main=MockMain(main)) == expected
+    assert asyncclick.utils._detect_program_name(path, _main=MockMain(main)) == expected
 
 
 def test_expand_args(monkeypatch):
     user = os.path.expanduser("~")
-    assert user in click.utils._expand_args(["~"])
+    assert user in asyncclick.utils._expand_args(["~"])
     monkeypatch.setenv("CLICK_TEST", "hello")
-    assert "hello" in click.utils._expand_args(["$CLICK_TEST"])
-    assert "pyproject.toml" in click.utils._expand_args(["*.toml"])
-    assert os.path.join("docs", "conf.py") in click.utils._expand_args(["**/conf.py"])
-    assert "*.not-found" in click.utils._expand_args(["*.not-found"])
+    assert "hello" in asyncclick.utils._expand_args(["$CLICK_TEST"])
+    assert "pyproject.toml" in asyncclick.utils._expand_args(["*.toml"])
+    assert os.path.join("docs", "conf.py") in asyncclick.utils._expand_args(["**/conf.py"])
+    assert "*.not-found" in asyncclick.utils._expand_args(["*.not-found"])
     # a bad glob pattern, such as a pytest identifier, should return itself
-    assert click.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
+    assert asyncclick.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
 
 
 @pytest.mark.parametrize(
@@ -507,5 +722,5 @@ def test_make_default_short_help(value, max_length, alter, expect):
     if alter:
         value = alter(value)
 
-    out = click.utils.make_default_short_help(value, max_length)
+    out = asyncclick.utils.make_default_short_help(value, max_length)
     assert out == expect

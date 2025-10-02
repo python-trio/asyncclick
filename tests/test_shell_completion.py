@@ -1,3 +1,7 @@
+import textwrap
+import warnings
+from collections.abc import Mapping
+
 import pytest
 
 import asyncclick as click
@@ -39,6 +43,37 @@ async def test_group():
     cli = Group("cli", params=[Option(["-a"])], commands=[Command("x"), Command("y")])
     assert await _get_words(cli, [], "") == ["x", "y"]
     assert await _get_words(cli, [], "-") == ["-a", "--help"]
+
+
+@pytest.mark.parametrize(
+    ("args", "word", "expect"),
+    [
+        ([], "", ["get"]),
+        (["get"], "", ["full"]),
+        (["get", "full"], "", ["data"]),
+        (["get", "full"], "-", ["--verbose", "--help"]),
+        (["get", "full", "data"], "", []),
+        (["get", "full", "data"], "-", ["-a", "--help"]),
+    ],
+)
+@pytest.mark.anyio
+async def test_nested_group(args: list[str], word: str, expect: list[str]) -> None:
+    cli = Group(
+        "cli",
+        commands=[
+            Group(
+                "get",
+                commands=[
+                    Group(
+                        "full",
+                        params=[Option(["--verbose"])],
+                        commands=[Command("data", params=[Option(["-a"])])],
+                    )
+                ],
+            )
+        ],
+    )
+    assert await _get_words(cli, args, word) == expect
 
 
 @pytest.mark.anyio
@@ -203,6 +238,20 @@ async def test_option_flag():
 
 
 @pytest.mark.anyio
+async def test_flag_option_with_nargs_option():
+    cli = Command(
+        "cli",
+        add_help_option=False,
+        params=[
+            Argument(["a"], type=Choice(["a1", "a2", "b"])),
+            Option(["--flag"], is_flag=True),
+            Option(["-c"], type=Choice(["p", "q"]), nargs=2),
+        ],
+    )
+    assert await _get_words(cli, ["a1", "--flag", "-c"], "") == ["p", "q"]
+
+
+@pytest.mark.anyio
 async def test_option_custom():
     def custom(ctx, param, incomplete):
         return [incomplete.upper()]
@@ -335,6 +384,7 @@ def test_full_source(runner, shell):
         ("zsh", {"COMP_WORDS": "a b", "COMP_CWORD": "1"}, "plain\nb\nbee\n"),
         ("fish", {"COMP_WORDS": "", "COMP_CWORD": ""}, "plain,a\nplain,b\tbee\n"),
         ("fish", {"COMP_WORDS": "a b", "COMP_CWORD": "b"}, "plain,b\tbee\n"),
+        ("fish", {"COMP_WORDS": 'a "b', "COMP_CWORD": '"b'}, "plain,b\tbee\n"),
     ],
 )
 @pytest.mark.usefixtures("_patch_for_completion")
@@ -342,6 +392,79 @@ def test_full_complete(runner, shell, env, expect):
     cli = Group("cli", commands=[Command("a"), Command("b", help="bee")])
     env["_CLI_COMPLETE"] = f"{shell}_complete"
     result = runner.invoke(cli, env=env)
+    assert result.output == expect
+
+
+@pytest.mark.parametrize(
+    ("env", "expect"),
+    [
+        (
+            {"COMP_WORDS": "", "COMP_CWORD": "0"},
+            textwrap.dedent(
+                """\
+                    plain
+                    a
+                    _
+                    plain
+                    b
+                    bee
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+        (
+            {"COMP_WORDS": "a c", "COMP_CWORD": "1"},
+            textwrap.dedent(
+                """\
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+        (
+            {"COMP_WORDS": "a c:", "COMP_CWORD": "1"},
+            textwrap.dedent(
+                """\
+                    plain
+                    c\\:d
+                    cee:dee
+                    plain
+                    c:e
+                    _
+                """
+            ),
+        ),
+    ],
+)
+@pytest.mark.usefixtures("_patch_for_completion")
+def test_zsh_full_complete_with_colons(
+    runner, env: Mapping[str, str], expect: str
+) -> None:
+    cli = Group(
+        "cli",
+        commands=[
+            Command("a"),
+            Command("b", help="bee"),
+            Command("c:d", help="cee:dee"),
+            Command("c:e"),
+        ],
+    )
+    result = runner.invoke(
+        cli,
+        env={
+            **env,
+            "_CLI_COMPLETE": "zsh_complete",
+        },
+    )
     assert result.output == expect
 
 
@@ -438,3 +561,28 @@ def test_add_completion_class_decorator():
     # Using `add_completion_class` as a decorator adds the new shell immediately
     assert "mysh" in click.shell_completion._available_shells
     assert click.shell_completion._available_shells["mysh"] is MyshComplete
+
+
+# Don't make the ResourceWarning give an error
+@pytest.mark.filterwarnings("default")
+@pytest.mark.anyio
+async def test_files_closed(runner) -> None:
+    with runner.isolated_filesystem():
+        config_file = "foo.txt"
+        with open(config_file, "w") as f:
+            f.write("bar")
+
+        @click.group()
+        @click.option(
+            "--config-file",
+            default=config_file,
+            type=click.File(mode="r"),
+        )
+        @click.pass_context
+        def cli(ctx, config_file):
+            pass
+
+        with warnings.catch_warnings(record=True) as current_warnings:
+            assert not current_warnings, "There should be no warnings to start"
+            await _get_completions(cli, args=[], incomplete="")
+            assert not current_warnings, "There should be no warnings after either"

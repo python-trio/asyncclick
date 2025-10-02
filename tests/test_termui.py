@@ -1,4 +1,5 @@
 import platform
+import tempfile
 import time
 
 import pytest
@@ -6,6 +7,8 @@ import pytest
 import asyncclick as click
 import asyncclick._termui_impl
 from asyncclick._compat import WIN
+from asyncclick.exceptions import BadParameter
+from asyncclick.exceptions import MissingParameter
 
 
 class FakeClock:
@@ -72,7 +75,7 @@ def test_progressbar_length_hint(runner, monkeypatch):
     assert result.exception is None
 
 
-def test_progressbar_hidden(runner, monkeypatch):
+def test_progressbar_no_tty(runner, monkeypatch):
     @click.command()
     def cli():
         with _create_progress(label="working") as progress:
@@ -81,6 +84,17 @@ def test_progressbar_hidden(runner, monkeypatch):
 
     monkeypatch.setattr(click._termui_impl, "isatty", lambda _: False)
     assert runner.invoke(cli, []).output == "working\n"
+
+
+def test_progressbar_hidden_manual(runner, monkeypatch):
+    @click.command()
+    def cli():
+        with _create_progress(label="see nothing", hidden=True) as progress:
+            for _ in progress:
+                pass
+
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    assert runner.invoke(cli, []).output == ""
 
 
 @pytest.mark.parametrize("avg, expected", [([], 0.0), ([1, 4], 2.5)])
@@ -231,7 +245,7 @@ def test_file_prompt_default_format(runner, file_kwargs):
     def cli(f):
         click.echo(f.name)
 
-    result = runner.invoke(cli)
+    result = runner.invoke(cli, input="\n")
     assert result.output == f"file [{__file__}]: \n{__file__}\n"
 
 
@@ -247,7 +261,7 @@ def test_secho(runner):
     ("value", "expect"), [(123, b"\x1b[45m123\x1b[0m"), (b"test", b"test")]
 )
 def test_secho_non_text(runner, value, expect):
-    with runner.isolation() as (out, _):
+    with runner.isolation() as (out, _, _):
         click.secho(value, nl=False, color=True, bg="magenta")
         result = out.getvalue()
         assert result == expect
@@ -370,6 +384,20 @@ def test_fast_edit(runner):
     assert result == "aTest\nbTest\n"
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="No sed on Windows.")
+def test_edit(runner):
+    with tempfile.NamedTemporaryFile(mode="w") as named_tempfile:
+        named_tempfile.write("a\nb")
+        named_tempfile.flush()
+
+        result = click.edit(filename=named_tempfile.name, editor="sed -i~ 's/$/Test/'")
+        assert result is None
+
+        # We need ot reopen the file as it becomes unreadable after the edit.
+        with open(named_tempfile.name) as reopened_file:
+            assert reopened_file.read() == "aTest\nbTest"
+
+
 @pytest.mark.parametrize(
     ("prompt_required", "required", "args", "expect"),
     [
@@ -426,7 +454,7 @@ def test_prompt_required_false(runner, args, expect):
     [
         (True, "password\npassword", None, "password"),
         ("Confirm Password", "password\npassword\n", None, "password"),
-        (True, "", "", ""),
+        (True, "\n\n", "", ""),
         (False, None, None, None),
     ],
 )
@@ -448,3 +476,231 @@ def test_confirmation_prompt(runner, prompt, input, default, expect):
 
     if prompt == "Confirm Password":
         assert "Confirm Password: " in result.output
+
+
+def test_false_show_default_cause_no_default_display_in_prompt(runner):
+    @click.command()
+    @click.option("--arg1", show_default=False, prompt=True, default="my-default-value")
+    def cmd(arg1):
+        pass
+
+    # Confirm that the default value is not included in the output when `show_default`
+    # is False
+    result = runner.invoke(cmd, input="my-input", standalone_mode=False)
+    assert "my-default-value" not in result.output
+
+
+REPEAT = object()
+"""Sentinel value to indicate that the prompt is expected to be repeated.
+
+I.e. the value provided by the user is not satisfactory and need to be re-prompted.
+"""
+
+INVALID = object()
+"""Sentinel value to indicate that the prompt is expected to be invalid.
+
+On invalid input, Click will output an error message and re-prompt the user.
+"""
+
+BOOLEAN_FLAG_PROMPT_CASES = [
+    ###
+    ### Test cases with prompt=True explicitly enabled for the flag.
+    ###
+    # Prompt is allowed and the flag has no default, so it prompts.
+    ({"prompt": True}, [], "[y/N]", "y", True),
+    ({"prompt": True}, [], "[y/N]", "n", False),
+    # Empty input default to False.
+    ({"prompt": True}, [], "[y/N]", "", False),
+    # Changing the default to True, makes the prompt change to [Y/n].
+    ({"prompt": True, "default": True}, [], "[Y/n]", "", True),
+    ({"prompt": True, "default": True}, [], "[Y/n]", "y", True),
+    ({"prompt": True, "default": True}, [], "[Y/n]", "n", False),
+    # False is the default's default, so it prompts with [y/N].
+    ({"prompt": True, "default": False}, [], "[y/N]", "", False),
+    ({"prompt": True, "default": False}, [], "[y/N]", "y", True),
+    ({"prompt": True, "default": False}, [], "[y/N]", "n", False),
+    # Defaulting to None, prompts with [y/n], which makes the user explicitly choose
+    # between True or False.
+    ({"prompt": True, "default": None}, [], "[y/n]", "y", True),
+    ({"prompt": True, "default": None}, [], "[y/n]", "n", False),
+    # Random string default is treated as a truthy value, so it prompts with [Y/n].
+    ({"prompt": True, "default": "foo"}, [], "[Y/n]", "", True),
+    ({"prompt": True, "default": "foo"}, [], "[Y/n]", "y", True),
+    ({"prompt": True, "default": "foo"}, [], "[Y/n]", "n", False),
+    ###
+    ### Test cases with required=True explicitly enabled for the flag.
+    ###
+    # A required flag just raises an error unless a default is set.
+    ({"required": True}, [], None, None, MissingParameter),
+    ({"required": True, "default": True}, [], None, None, True),
+    ({"required": True, "default": False}, [], None, None, False),
+    ({"required": True, "default": None}, [], None, None, None),
+    ({"required": True, "default": "on"}, [], None, None, True),
+    ({"required": True, "default": "off"}, [], None, None, False),
+    ({"required": True, "default": "foo"}, [], None, None, BadParameter),
+    ###
+    ### Explicitly passing the flag to the CLI bypass any prompt, whatever the
+    ### configuration of the flag.
+    ###
+    # Flag allowing a prompt.
+    ({"prompt": True}, ["--flag"], None, None, True),
+    ({"prompt": True}, ["--no-flag"], None, None, False),
+    ({"prompt": True, "default": None}, ["--flag"], None, None, True),
+    ({"prompt": True, "default": None}, ["--no-flag"], None, None, False),
+    ({"prompt": True, "default": True}, ["--flag"], None, None, True),
+    ({"prompt": True, "default": True}, ["--no-flag"], None, None, False),
+    ({"prompt": True, "default": False}, ["--flag"], None, None, True),
+    ({"prompt": True, "default": False}, ["--no-flag"], None, None, False),
+    ({"prompt": True, "default": "foo"}, ["--flag"], None, None, True),
+    ({"prompt": True, "default": "foo"}, ["--no-flag"], None, None, False),
+    # Required flag.
+    ({"required": True}, ["--flag"], None, None, True),
+    ({"required": True}, ["--no-flag"], None, None, False),
+    ({"required": True, "default": None}, ["--flag"], None, None, True),
+    ({"required": True, "default": None}, ["--no-flag"], None, None, False),
+    ({"required": True, "default": True}, ["--flag"], None, None, True),
+    ({"required": True, "default": True}, ["--no-flag"], None, None, False),
+    ({"required": True, "default": False}, ["--flag"], None, None, True),
+    ({"required": True, "default": False}, ["--no-flag"], None, None, False),
+    ({"required": True, "default": "foo"}, ["--flag"], None, None, True),
+    ({"required": True, "default": "foo"}, ["--no-flag"], None, None, False),
+]
+
+FLAG_VALUE_PROMPT_CASES = [
+    ###
+    ### Test cases with prompt=True explicitly enabled for the flag.
+    ###
+    # Prompt is allowed and the flag has no default, so it prompts.
+    # But the flag_value is not set, so it defaults to a string.
+    ({"prompt": True}, [], "", "", REPEAT),
+    ({"prompt": True}, [], "", "y", "y"),
+    ({"prompt": True}, [], "", "n", "n"),
+    ({"prompt": True}, [], "", "foo", "foo"),
+    # This time we provide a boolean flag_value, which makes the flag behave like a
+    # boolean flag, and use the appropriate variation of [y/n].
+    ({"prompt": True, "flag_value": True}, [], "[y/N]", "", False),
+    ({"prompt": True, "flag_value": True}, [], "[y/N]", "y", True),
+    ({"prompt": True, "flag_value": True}, [], "[y/N]", "n", False),
+    ({"prompt": True, "flag_value": False}, [], "[y/N]", "", False),
+    ({"prompt": True, "flag_value": False}, [], "[y/N]", "y", True),
+    ({"prompt": True, "flag_value": False}, [], "[y/N]", "n", False),
+    # Other flag values changes the auto-detection of the flag type.
+    ({"prompt": True, "flag_value": None}, [], "", "", REPEAT),
+    ({"prompt": True, "flag_value": None}, [], "", "y", "y"),
+    ({"prompt": True, "flag_value": None}, [], "", "n", "n"),
+    ({"prompt": True, "flag_value": "foo"}, [], "", "", REPEAT),
+    ({"prompt": True, "flag_value": "foo"}, [], "", "y", "y"),
+    ({"prompt": True, "flag_value": "foo"}, [], "", "n", "n"),
+    ###
+    ### Test cases with a flag_value and a default.
+    ###
+    # default=True
+    ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "", True),
+    ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "y", True),
+    ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "n", False),
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "", False),
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "y", True),
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "n", False),
+    # default=False
+    ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "", False),
+    ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "y", True),
+    ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "n", False),
+    ({"prompt": True, "default": False, "flag_value": False}, [], "[y/N]", "", False),
+    ({"prompt": True, "default": False, "flag_value": False}, [], "[y/N]", "y", True),
+    ({"prompt": True, "default": False, "flag_value": False}, [], "[y/N]", "n", False),
+    # default=None
+    (
+        {"prompt": True, "default": None, "flag_value": True},
+        [],
+        "[y/n]",
+        "",
+        INVALID,
+    ),
+    ({"prompt": True, "default": None, "flag_value": True}, [], "[y/n]", "y", True),
+    ({"prompt": True, "default": None, "flag_value": True}, [], "[y/n]", "n", False),
+    (
+        {"prompt": True, "default": None, "flag_value": False},
+        [],
+        "[y/n]",
+        "",
+        INVALID,
+    ),
+    ({"prompt": True, "default": None, "flag_value": False}, [], "[y/n]", "y", True),
+    ({"prompt": True, "default": None, "flag_value": False}, [], "[y/n]", "n", False),
+    # If the flag_value is None, the flag behave like a string flag, whatever the
+    # default is.
+    ({"prompt": True, "default": True, "flag_value": None}, [], "", "", REPEAT),
+    ({"prompt": True, "default": True, "flag_value": None}, [], "", "y", "y"),
+    ({"prompt": True, "default": True, "flag_value": None}, [], "", "n", "n"),
+    (
+        {"prompt": True, "default": False, "flag_value": None},
+        [],
+        "[False]",
+        "",
+        "False",
+    ),
+    ({"prompt": True, "default": False, "flag_value": None}, [], "[False]", "y", "y"),
+    ({"prompt": True, "default": False, "flag_value": None}, [], "[False]", "n", "n"),
+    ({"prompt": True, "default": None, "flag_value": None}, [], "", "", REPEAT),
+    ({"prompt": True, "default": None, "flag_value": None}, [], "", "y", "y"),
+    ({"prompt": True, "default": None, "flag_value": None}, [], "", "n", "n"),
+]
+
+
+@pytest.mark.parametrize(
+    ("opt_decls", "opt_params", "args", "prompt", "input", "expected"),
+    # Boolean flag prompt cases.
+    [("--flag/--no-flag", *case_params) for case_params in BOOLEAN_FLAG_PROMPT_CASES]
+    # Non-boolean flag prompt cases.
+    + [("--flag", *case_params) for case_params in FLAG_VALUE_PROMPT_CASES],
+)
+def test_flag_value_prompt(
+    runner, opt_decls, opt_params, args, prompt, input, expected
+):
+    """Check how flag value are prompted and handled by all combinations of
+    ``prompt``, ``default``, and ``flag_value`` parameters.
+
+    Covers concerns raised in issue https://github.com/pallets/click/issues/1992.
+    """
+
+    @click.command()
+    @click.option(opt_decls, **opt_params)
+    def cli(flag):
+        click.echo(repr(flag))
+
+    invoke_options = {"standalone_mode": False}
+    if input is not None:
+        assert isinstance(input, str)
+        invoke_options["input"] = f"{input}\n"
+
+    result = runner.invoke(cli, args, **invoke_options)
+
+    if expected in (MissingParameter, BadParameter):
+        assert isinstance(result.exception, expected)
+        assert not result.output
+        assert result.exit_code == 1
+
+    else:
+        expected_output = ""
+        if prompt is not None:
+            # Build the expected prompt.
+            assert isinstance(prompt, str)
+            expected_prompt = f"Flag {prompt}: " if prompt else "Flag: "
+
+            # Add the user input to the expected output.
+            assert isinstance(input, str)
+            expected_output += f"{expected_prompt}{input}\n"
+
+            if expected is INVALID:
+                expected_output += "Error: invalid input\n"
+
+            # The prompt is expected to be repeated.
+            if expected in (REPEAT, INVALID):
+                expected_output += expected_prompt
+
+        if expected not in (REPEAT, INVALID):
+            expected_output += f"{expected!r}\n"
+
+        assert result.output == expected_output
+        assert not result.stderr
+        assert result.exit_code == 0 if expected not in (REPEAT, INVALID) else 1

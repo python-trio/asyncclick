@@ -5,7 +5,9 @@ Asyncclick is a fork of Click (described below) that works with trio or asyncio.
 AsyncClick allows you to seamlessly use async command and subcommand handlers.
 
 
-# $ click_
+<div align="center"><img src="https://raw.githubusercontent.com/pallets/click/refs/heads/stable/docs/_static/click-name.svg" alt="" height="150"></div>
+
+# Click
 
 Click is a Python package for creating beautiful command line interfaces
 in a composable way with as little code as necessary. It's the "Command
@@ -64,3 +66,29 @@ donate today][].
 The AsyncClick fork is maintained by Matthias Urlichs <matthias@urlichs.de>.
 It's not a lot of work, so if you'd like to motivate me, donate to the
 charity of your choice and tell me that you've done so. ;-)
+
+## Contributing
+
+### Click
+
+See our [detailed contributing documentation][contrib] for many ways to
+contribute, including reporting issues, requesting features, asking or answering
+questions, and making PRs.
+
+[contrib]: https://palletsprojects.com/contributing/
+
+### AsyncClick
+
+You can file async-specific issues, ideally including a corresponding fix,
+to the [MoaT/asyncclick][moat] repository on github.
+
+[moat]: https://github.com/M-o-a-T/asyncclick
+
+#### Testing
+
+If you find a bug, please add a testcase to prevent it from recurring.
+
+In tests, you might wonder why `runner.invoke` is not called asynchronously.
+The reason is that there are far too many of these calls to modify them all.
+Thus ``tests/conftest.py``  contains a monkeypatch that turns this call
+into a thread that runs this call using `anyio.run`.

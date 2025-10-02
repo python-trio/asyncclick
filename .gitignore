@@ -5,8 +5,6 @@ src/*.egg-info/
 .cache/
 .idea/
 .vscode/
-.venv*/
-venv*/
 __pycache__/
 /dist/
 /.pytest_cache/
