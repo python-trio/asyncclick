@@ -686,8 +686,8 @@ def test_expand_args(monkeypatch):
     monkeypatch.setenv("CLICK_TEST", "hello")
     assert "hello" in asyncclick.utils._expand_args(["$CLICK_TEST"])
     assert "pyproject.toml" in asyncclick.utils._expand_args(["*.toml"])
-    assert os.path.join("docs", "conf.py") in asyncclick.utils._expand_args(
-        ["**/conf.py"]
+    assert os.path.join("tests", "conftest.py") in asyncclick.utils._expand_args(
+        ["**/conftest.py"]
     )
     assert "*.not-found" in asyncclick.utils._expand_args(["*.not-found"])
     # a bad glob pattern, such as a pytest identifier, should return itself
