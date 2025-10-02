@@ -21,6 +21,7 @@ if t.TYPE_CHECKING:
 
     from .core import Command
 
+
 class EchoingStdin:
     def __init__(self, input: t.BinaryIO, output: t.BinaryIO) -> None:
         self._input = input
@@ -503,7 +504,9 @@ class CliRunner:
                 prog_name = self.get_default_prog_name(cli)
 
             try:
-                return_value = await cli.main(args=args or (), prog_name=prog_name, **extra)
+                return_value = await cli.main(
+                    args=args or (), prog_name=prog_name, **extra
+                )
             except SystemExit as e:
                 exc_info = sys.exc_info()
                 e_code = t.cast("int | t.Any | None", e.code)

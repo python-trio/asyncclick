@@ -10,4 +10,3 @@ else
 	@echo "Please use 'python setup.py'."
 	@exit 1
 endif
-

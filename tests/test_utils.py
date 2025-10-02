@@ -642,7 +642,9 @@ def test_iter_keepopenfile(tmpdir):
     p = tmpdir.mkdir("testdir").join("testfile")
     p.write("\n".join(expected))
     with p.open() as f:
-        for e_line, a_line in zip(expected, asyncclick.utils.KeepOpenFile(f), strict=False):
+        for e_line, a_line in zip(
+            expected, asyncclick.utils.KeepOpenFile(f), strict=False
+        ):
             assert e_line == a_line.strip()
 
 
@@ -684,10 +686,14 @@ def test_expand_args(monkeypatch):
     monkeypatch.setenv("CLICK_TEST", "hello")
     assert "hello" in asyncclick.utils._expand_args(["$CLICK_TEST"])
     assert "pyproject.toml" in asyncclick.utils._expand_args(["*.toml"])
-    assert os.path.join("docs", "conf.py") in asyncclick.utils._expand_args(["**/conf.py"])
+    assert os.path.join("docs", "conf.py") in asyncclick.utils._expand_args(
+        ["**/conf.py"]
+    )
     assert "*.not-found" in asyncclick.utils._expand_args(["*.not-found"])
     # a bad glob pattern, such as a pytest identifier, should return itself
-    assert asyncclick.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
+    assert (
+        asyncclick.utils._expand_args(["test.py::test_bad"])[0] == "test.py::test_bad"
+    )
 
 
 @pytest.mark.parametrize(

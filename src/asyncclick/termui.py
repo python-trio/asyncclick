@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import anyio
 import collections.abc as cabc
 import inspect
 import io
@@ -10,6 +9,8 @@ import typing as t
 from contextlib import AbstractContextManager
 from gettext import gettext as _
 from inspect import iscoroutine
+
+import anyio
 
 from ._compat import isatty
 from ._compat import strip_ansi
@@ -165,11 +166,13 @@ async def prompt(
             raise Abort() from None
 
     if blocking:
+
         async def run_prompt_func(text: str) -> str:
             return prompt_func(text)
     else:
-        def run_prompt_func(text: str) -> Awaitable[str]:
-            return anyio.to_thread.run_sync(prompt_func, text)
+
+        async def run_prompt_func(text: str) -> str:
+            return await anyio.to_thread.run_sync(prompt_func, text)
 
     if value_proc is None:
         value_proc = convert_type(type, default)

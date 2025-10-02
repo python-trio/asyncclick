@@ -1,6 +1,6 @@
-import asyncclick as click
-
 import pytest
+
+import asyncclick as click
 
 
 @pytest.mark.anyio

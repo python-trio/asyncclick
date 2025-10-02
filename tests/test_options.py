@@ -312,24 +312,24 @@ def test_good_defaults_for_multiple(runner, multiple, nargs, default, expected):
             2,
             [tuple()],
             ValueError,
-            r"'nargs' must be 0 \(or None\) for type <asyncclick\.types\.Tuple object at "
-            r"0x[0-9A-Fa-f]+>, but it was 2\.",
+            r"'nargs' must be 0 \(or None\) for type <asyncclick\.types\.Tuple "
+            r"object at 0x[0-9A-Fa-f]+>, but it was 2\.",
         ),
         (
             True,
             2,
             [(1,)],
             ValueError,
-            r"'nargs' must be 1 \(or None\) for type <asyncclick\.types\.Tuple object at "
-            r"0x[0-9A-Fa-f]+>, but it was 2\.",
+            r"'nargs' must be 1 \(or None\) for type <asyncclick\.types\.Tuple "
+            r"object at 0x[0-9A-Fa-f]+>, but it was 2\.",
         ),
         (
             True,
             2,
             [(1, 2, 3)],
             ValueError,
-            r"'nargs' must be 3 \(or None\) for type <asyncclick\.types\.Tuple object at "
-            r"0x[0-9A-Fa-f]+>, but it was 2\.",
+            r"'nargs' must be 3 \(or None\) for type <asyncclick\.types\.Tuple "
+            r"object at 0x[0-9A-Fa-f]+>, but it was 2\.",
         ),
         # A mix of valid and invalid defaults.
         (
@@ -352,8 +352,8 @@ def test_good_defaults_for_multiple(runner, multiple, nargs, default, expected):
             2,
             [[1]],
             ValueError,
-            r"'nargs' must be 1 \(or None\) for type <asyncclick\.types\.Tuple object at "
-            r"0x[0-9A-Fa-f]+>, but it was 2\.",
+            r"'nargs' must be 1 \(or None\) for type <asyncclick\.types\.Tuple "
+            r"object at 0x[0-9A-Fa-f]+>, but it was 2\.",
         ),
     ],
 )
