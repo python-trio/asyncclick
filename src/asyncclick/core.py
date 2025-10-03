@@ -1547,7 +1547,7 @@ class Command:
                 opts["backend"] = _anyio_backend
             if _anyio_backend_options:
                 opts["backend_options"] = _anyio_backend_options
-            return anyio.run(self._main, main, args, kwargs, **opts)  # type:ignore
+            return anyio.run(self._main, main, args, kwargs, **opts)
 
         if _anyio_backend == "trio":
             import trio

@@ -165,14 +165,15 @@ async def prompt(
                 echo(None, err=err)
             raise Abort() from None
 
+    run_prompt_func: t.Callable[[str], t.Awaitable[str]]
     if blocking:
 
         async def run_prompt_func(text: str) -> str:
             return prompt_func(text)
     else:
 
-        async def run_prompt_func(text: str) -> str:
-            return await anyio.to_thread.run_sync(prompt_func, text)
+        def run_prompt_func(text: str) -> t.Awaitable[str]:
+            return anyio.to_thread.run_sync(prompt_func, text)
 
     if value_proc is None:
         value_proc = convert_type(type, default)
