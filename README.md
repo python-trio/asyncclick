@@ -75,6 +75,12 @@ in practice, as replacing ``import click`` with ``import asyncclick as click``, 
 ``from click import ...`` with ``from asyncclick import ...``, should be all that's
 required.
 
+### Notable packages supporting asyncclick
+
+* [OpenTelemetry][opentelemetry] supports instrumenting asyncclick.
+
+[opentelemetry]: https://pypi.org/project/opentelemetry-instrumentation-asyncclick/
+
 
 ## Donate
 
