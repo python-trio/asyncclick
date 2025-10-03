@@ -23,6 +23,9 @@ Released 2025-09-15
     async. It accepts a new `blocking` parameter to switch between keeping the
     async loop running (`False`) and not going belly-up when the user interrupts
     it using Control-C (`True`). `True` thus is the default (for now).
+-   **Breaking asyncclick change**: ``Context.exit`` has been renamed to
+    :meth:`Context.aexit` and is now async, due to the fact that async
+    teardown callbacks and context managers needed better support.
 
 -   **Improved flag option handling**: Reworked the relationship between ``flag_value``
     and ``default`` parameters for better consistency:
