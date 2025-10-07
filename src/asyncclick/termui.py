@@ -10,8 +10,6 @@ from contextlib import AbstractContextManager
 from gettext import gettext as _
 from inspect import iscoroutine
 
-import anyio
-
 from ._compat import isatty
 from ._compat import strip_ansi
 from .exceptions import Abort
@@ -171,9 +169,34 @@ async def prompt(
         async def run_prompt_func(text: str) -> str:
             return prompt_func(text)
     else:
+        # Not having a hard dependency on any async runtime is harder than it looks.
+        try:
+            import anyio
 
-        def run_prompt_func(text: str) -> t.Awaitable[str]:
-            return anyio.to_thread.run_sync(prompt_func, text)
+        except ImportError:
+            try:
+                import sniffio  # type: ignore
+            except ImportError:
+                backend = "asyncio"
+            else:
+                backend = sniffio.current_async_library()
+
+            if backend == "trio":
+                import trio
+
+                def run_prompt_func(text: str) -> t.Awaitable[str]:
+                    return trio.to_thread.run_sync(prompt_func, text)
+
+            else:
+                import asyncio
+
+                def run_prompt_func(text: str) -> t.Awaitable[str]:
+                    return asyncio.to_thread(prompt_func, text)
+
+        else:
+
+            def run_prompt_func(text: str) -> t.Awaitable[str]:
+                return anyio.to_thread.run_sync(prompt_func, text)
 
     if value_proc is None:
         value_proc = convert_type(type, default)
