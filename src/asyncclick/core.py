@@ -1520,7 +1520,7 @@ class Command:
     def __call__(
         self,
         *args: t.Any,
-        _anyio_backend: str | None = None,
+        _anyio_backend: str = "asyncio",
         _anyio_backend_options: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> t.Any:
