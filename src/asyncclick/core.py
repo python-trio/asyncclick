@@ -1520,7 +1520,7 @@ class Command:
     def __call__(
         self,
         *args: t.Any,
-        _anyio_backend: str = "asyncio",
+        _anyio_backend: str | None,
         _anyio_backend_options: dict[str, t.Any] | None = None,
         **kwargs: t.Any,
     ) -> t.Any:
@@ -1528,6 +1528,9 @@ class Command:
 
         If you are already inside an async event loop, call
         ``await`` :meth:`main` instead.
+
+        If no backend is found and anyio is not installed, then ``asyncio`` is
+        used for the backend.
 
         :param _anyio_backend: The backend to use for the event loop.
         :param _anyio_backend_options: Any options to pass to the backend.
@@ -1553,7 +1556,7 @@ class Command:
             import trio
 
             return trio.run(self._main, main, args, kwargs)
-        if _anyio_backend == "asyncio":
+        if _anyio_backend == "asyncio" or _anyio_backend is None:
             import asyncio
 
             return asyncio.run(self._main(main, args, kwargs))
