@@ -1553,7 +1553,7 @@ class Command:
             import trio
 
             return trio.run(self._main, main, args, kwargs)
-        if _anyio_backend == "asyncio":
+        if _anyio_backend is None or _anyio_backend == "asyncio":
             import asyncio
 
             return asyncio.run(self._main(main, args, kwargs))
