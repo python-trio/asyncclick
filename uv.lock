@@ -31,7 +31,7 @@ wheels = [
 
 [[package]]
 name = "asyncclick"
-version = "8.3.0.6"
+version = "8.3.0.7"
 source = { editable = "." }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
