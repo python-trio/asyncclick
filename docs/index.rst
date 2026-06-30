@@ -92,6 +92,7 @@ Conceptual Guides
 .. toctree::
    :maxdepth: 1
 
+   design-opinions
    why
    click-concepts
 
@@ -118,6 +119,7 @@ General Reference
    utils
    shell-completion
    exceptions
+   command-line-reference
    unicode-support
    wincmd
 

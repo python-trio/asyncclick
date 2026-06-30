@@ -486,10 +486,22 @@ async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert err == ""
 
     emulate_input("asdlkj\n")
+    await click.prompt("Prompt to stdin with no suffix", prompt_suffix="")
+    out, err = capfd.readouterr()
+    assert out == "Prompt to stdin with no suffix"
+    assert err == ""
+
+    emulate_input("asdlkj\n")
     await click.prompt("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
     assert out == " "
     assert err == "Prompt to stderr:"
+
+    emulate_input("asdlkj\n")
+    await click.prompt("Prompt to stderr with no suffix", prompt_suffix="", err=True)
+    out, err = capfd.readouterr()
+    assert out == "x"
+    assert err == "Prompt to stderr with no suffi"
 
     emulate_input("y\n")
     click.confirm("Prompt to stdin")
@@ -498,10 +510,22 @@ async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert err == ""
 
     emulate_input("y\n")
+    click.confirm("Prompt to stdin with no suffix", prompt_suffix="")
+    out, err = capfd.readouterr()
+    assert out == "Prompt to stdin with no suffix [y/N]"
+    assert err == ""
+
+    emulate_input("y\n")
     click.confirm("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
     assert out == " "
     assert err == "Prompt to stderr [y/N]:"
+
+    emulate_input("y\n")
+    click.confirm("Prompt to stderr with no suffix", prompt_suffix="", err=True)
+    out, err = capfd.readouterr()
+    assert out == "]"
+    assert err == "Prompt to stderr with no suffix [y/N"
 
     monkeypatch.setattr(click.termui, "isatty", lambda x: True)
     monkeypatch.setattr(click.termui, "getchar", lambda: " ")

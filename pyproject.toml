@@ -16,7 +16,7 @@ requires-python = ">=3.11"
 dependencies = [
     "colorama; platform_system == 'Windows'",
 ]
-version = "8.3.0.7"
+version = "8.3.1.0"
 
 [project.urls]
 Source = "https://github.com/python-trio/asyncclick/"
@@ -65,7 +65,7 @@ trio = [
 ]
 
 [build-system]
-requires = ["flit_core<4"]
+requires = ["flit_core>=3.11,<4"]
 build-backend = "flit_core.buildapi"
 
 [tool.flit.module]
@@ -139,9 +139,6 @@ select = [
     "UP",  # pyupgrade
     "W",  # pycodestyle warning
 ]
-ignore = [
-    "UP038",  # keep isinstance tuple
-]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -149,7 +146,8 @@ order-by-type = false
 
 [tool.tox]
 env_list = [
-    "py3.13", "py3.12", "py3.11",
+    "py3.14", "py3.13", "py3.12", "py3.11",
+    "py3.14t",
     "pypy3.11",
     "style",
     "typing",
@@ -180,6 +178,7 @@ description = "run static type checkers"
 dependency_groups = ["typing"]
 commands = [
     ["mypy"],
+    ["pyright", "--ignoreexternal", "--verifytypes", "click"],
 ]
 
 [tool.tox.env.docs]

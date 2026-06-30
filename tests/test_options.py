@@ -1,13 +1,9 @@
 import enum
 import os
 import re
-import sys
 import tempfile
 from contextlib import nullcontext
 from typing import Literal
-
-if sys.version_info < (3, 11):
-    enum.StrEnum = enum.Enum  # type: ignore[assignment]
 
 import pytest
 
@@ -1012,6 +1008,42 @@ def test_option_custom_class(runner):
     result = runner.invoke(cmd, ["--help"])
     assert "I am a help text" in result.output
     assert "you wont see me" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("param_decl", "option_kwargs", "pass_argv"),
+    (
+        # there is a large potential parameter space to explore here
+        # this is just a very small sample of it
+        ("--opt", {}, []),
+        ("--opt", {"multiple": True}, []),
+        ("--opt", {"is_flag": True}, []),
+        ("--opt/--no-opt", {"is_flag": True, "default": None}, []),
+        ("--req", {"is_flag": True, "required": True}, ["--req"]),
+    ),
+)
+def test_option_custom_class_can_override_type_cast_value_and_never_sees_unset(
+    runner, param_decl, option_kwargs, pass_argv
+):
+    """
+    Test that overriding type_cast_value is supported
+
+    In particular, the option is never passed an UNSET sentinel value.
+    """
+
+    class CustomOption(click.Option):
+        def type_cast_value(self, ctx, value):
+            assert value is not UNSET
+            return value
+
+    @click.command()
+    @click.option("myparam", param_decl, **option_kwargs, cls=CustomOption)
+    def cmd(myparam):
+        click.echo("ok")
+
+    result = runner.invoke(cmd, pass_argv)
+    assert not result.exception
+    assert result.exit_code == 0
 
 
 def test_option_custom_class_reusable(runner):
