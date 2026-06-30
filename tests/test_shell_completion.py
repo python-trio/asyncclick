@@ -1,3 +1,4 @@
+import io
 import textwrap
 import warnings
 from collections.abc import Mapping
@@ -12,6 +13,8 @@ from asyncclick.core import Group
 from asyncclick.core import Option
 from asyncclick.shell_completion import add_completion_class
 from asyncclick.shell_completion import CompletionItem
+from asyncclick.shell_completion import FishComplete
+from asyncclick.shell_completion import shell_complete
 from asyncclick.shell_completion import ShellComplete
 from asyncclick.types import Choice
 from asyncclick.types import File
@@ -395,6 +398,21 @@ def test_full_complete(runner, shell, env, expect):
     assert result.output == expect
 
 
+@pytest.mark.anyio
+async def test_source_uses_lf_line_endings(monkeypatch):
+    stdout = io.BytesIO()
+    stream = io.TextIOWrapper(stdout, encoding="utf-8", newline="\r\n")
+    monkeypatch.setattr("asyncclick.utils._default_text_stdout", lambda: stream)
+
+    cli = Group("cli", commands=[Command("a"), Command("b")])
+    assert await shell_complete(cli, {}, "cli", "_CLI_COMPLETE", "zsh_source") == 0
+
+    stream.flush()
+    output = stdout.getvalue()
+    assert b"\r\n" not in output
+    assert b"\n" in output
+
+
 @pytest.mark.parametrize(
     ("env", "expect"),
     [
@@ -482,7 +500,8 @@ def test_context_settings(runner):
     assert result.output == "plain,a\nplain,b\n"
 
 
-@pytest.mark.parametrize(("value", "expect"), [(False, ["Au", "al"]), (True, ["al"])])
+# case_sensitive=False normalizes values to lowercase, matching remains case insensitive
+@pytest.mark.parametrize(("value", "expect"), [(False, ["au", "al"]), (True, ["al"])])
 @pytest.mark.anyio
 async def test_choice_case_sensitive(value, expect):
     cli = Command(
@@ -586,3 +605,11 @@ async def test_files_closed(runner) -> None:
             assert not current_warnings, "There should be no warnings to start"
             await _get_completions(cli, args=[], incomplete="")
             assert not current_warnings, "There should be no warnings after either"
+
+
+def test_fish_format_completion_escapes_help():
+    fc = FishComplete(Command("x"), {}, "x", "_X_COMPLETE")
+    item = CompletionItem("--at", help="first\nsecond\tthird")
+    # The newline is escaped to the literal characters backslash-n and the tab
+    # becomes a space, so each completion stays on one line for fish.
+    assert fc.format_completion(item) == "plain,--at\tfirst\\nsecond third"

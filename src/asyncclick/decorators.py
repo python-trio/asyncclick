@@ -404,8 +404,8 @@ def confirmation_option(*param_decls: str, **kwargs: t.Any) -> t.Callable[[FC], 
     kwargs.setdefault("is_flag", True)
     kwargs.setdefault("callback", callback)
     kwargs.setdefault("expose_value", False)
-    kwargs.setdefault("prompt", "Do you want to continue?")
-    kwargs.setdefault("help", "Confirm the action without prompting.")
+    kwargs.setdefault("prompt", _("Do you want to continue?"))
+    kwargs.setdefault("help", _("Confirm the action without prompting."))
     return option(*param_decls, **kwargs)
 
 
@@ -442,8 +442,11 @@ def version_option(
     ``package_name``.
 
     If ``package_name`` is not provided, Click will try to detect it by
-    inspecting the stack frames. This will be used to detect the
-    version, so it must match the name of the installed package.
+    inspecting the stack frames. If the detected (or given) name does
+    not match an installed distribution, Click resolves it as an import
+    (top-level module) name via
+    :func:`importlib.metadata.packages_distributions`, so e.g. ``PIL``
+    resolves to the ``Pillow`` distribution.
 
     :param version: The version number to show. If not provided, Click
         will try to detect it.
@@ -468,6 +471,10 @@ def version_option(
         version is detected based on the package name, not the entry
         point name. The Python package name must match the installed
         package name, or be passed with ``package_name=``.
+
+    .. versionchanged:: 8.4.2
+        When ``package_name`` does not match an installed distribution,
+        Click now resolves it as an import (top-level module).
     """
     if message is None:
         message = _("%(prog)s, version %(version)s")
@@ -495,6 +502,7 @@ def version_option(
 
         nonlocal prog_name
         nonlocal version
+        nonlocal package_name
 
         if prog_name is None:
             prog_name = ctx.find_root().info_name
@@ -505,10 +513,26 @@ def version_option(
             try:
                 version = importlib.metadata.version(package_name)
             except importlib.metadata.PackageNotFoundError:
-                raise RuntimeError(
-                    f"{package_name!r} is not installed. Try passing"
-                    " 'package_name' instead."
-                ) from None
+                # The given name didn't match an installed distribution.
+                # Try resolving it as an import (top-level module) name,
+                # e.g. ``PIL`` is provided by the ``Pillow`` distribution.
+                distributions = importlib.metadata.packages_distributions().get(
+                    package_name, []
+                )
+                if len(distributions) == 1:
+                    package_name = distributions[0]
+                    version = importlib.metadata.version(package_name)
+                elif len(distributions) > 1:
+                    raise RuntimeError(
+                        f"{package_name!r} maps to multiple installed"
+                        f" distributions ({', '.join(distributions)})."
+                        " Pass 'package_name' to disambiguate."
+                    ) from None
+                else:
+                    raise RuntimeError(
+                        f"{package_name!r} is not installed. Try passing"
+                        " 'package_name' instead."
+                    ) from None
 
         if version is None:
             raise RuntimeError(

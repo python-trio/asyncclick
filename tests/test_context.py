@@ -202,7 +202,7 @@ async def test_hiding_of_unset_sentinel_in_callbacks():
     class ParameterInternalCheck(Option):
         """An option that checks internal state during processing."""
 
-        def process_value(self, ctx, value):
+        async def process_value(self, ctx, value):
             """Check that UNSET values are hidden as None in ctx.params within the
             callback, and then properly restored afterwards.
             """
@@ -211,7 +211,7 @@ async def test_hiding_of_unset_sentinel_in_callbacks():
             click.echo(f"before_process.my_opt: {ctx.params.get('my_opt')!r}")
             click.echo(f"before_process.my_callback: {ctx.params.get('my_callback')!r}")
 
-            value = super().process_value(ctx, value)
+            value = await super().process_value(ctx, value)
 
             assert click.get_current_context() is ctx
             click.echo(f"after_process.my_arg: {ctx.params.get('my_arg')!r}")

@@ -51,6 +51,11 @@ tests = [
     "anyio",
     "trio",
 ]
+tests-random = [
+    "pytest",
+    "pytest-randomly",
+    "pytest-xdist",
+]
 typing = [
     "anyio",
     "mypy",
@@ -90,6 +95,10 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
 ]
+markers = [
+    "stress: high-iteration stress tests for race conditions (deselect with '-m \"not stress\"')",
+]
+addopts = "-m 'not stress'"
 
 [tool.coverage.run]
 branch = true
@@ -138,7 +147,12 @@ select = [
     "I",  # isort
     "UP",  # pyupgrade
     "W",  # pycodestyle warning
+    "ICN", #flake8-import-conventions (ICN)
 ]
+
+[tool.ruff.lint.flake8-import-conventions.aliases]
+# Declare the default aliases.
+typing = "t"
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -149,6 +163,7 @@ env_list = [
     "py3.14", "py3.13", "py3.12", "py3.11",
     "py3.14t",
     "pypy3.11",
+    "stress-py3.14", "stress-py3.14t",
     "style",
     "typing",
     "docs",
@@ -164,6 +179,24 @@ use_frozen_constraints = true
 dependency_groups = ["tests"]
 commands = [[
     "pytest", "-v", "--tb=short", "--basetemp={env_tmp_dir}",
+    {replace = "posargs", default = [], extend = true},
+]]
+
+[tool.tox.env.random]
+description = "randomized parallel tests to detect test pollution and race conditions"
+dependency_groups = ["tests-random"]
+commands = [[
+    "pytest", "-v", "--tb=short", "--numprocesses=auto",
+    "--basetemp={env_tmp_dir}",
+    {replace = "posargs", default = [], extend = true},
+]]
+
+[tool.tox.env.stress]
+description = "high-iteration stress tests for race conditions"
+commands = [[
+    "pytest", "-v", "--tb=short", "-x", "-m", "stress",
+    "--basetemp={env_tmp_dir}",
+    "--override-ini=addopts=",
     {replace = "posargs", default = [], extend = true},
 ]]
 

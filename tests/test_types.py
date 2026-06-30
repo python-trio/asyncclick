@@ -51,6 +51,25 @@ def test_range_fail(type, value, expect):
     assert expect in exc_info.value.message
 
 
+@pytest.mark.parametrize(
+    ("error_message", "expected"),
+    [
+        ("bad value: nope", "bad value: nope"),
+        ("", "nope"),
+    ],
+)
+def test_func_param_type_uses_value_error_message(error_message, expected):
+    def parse(value):
+        raise ValueError(error_message if error_message else "")
+
+    func_type = click.types.FuncParamType(parse)
+
+    with pytest.raises(click.BadParameter) as exc_info:
+        func_type.convert("nope", None, None)
+
+    assert expected in exc_info.value.message
+
+
 def test_float_range_no_clamp_open():
     with pytest.raises(TypeError):
         click.FloatRange(0, 1, max_open=True, clamp=True)
@@ -224,13 +243,22 @@ def test_path_surrogates(tmp_path, monkeypatch):
     ],
 )
 def test_file_surrogates(type, tmp_path):
-    path = tmp_path / "\udcff"
+    """Ensures that the error handling in ``click.File`` is robust.
 
-    # - common case: �': No such file or directory
-    # - special case: Illegal byte sequence
-    # The spacial case is seen with rootless Podman. The root cause is most
-    # likely that the path is handled by a user-space program (FUSE).
-    match = r"(�': No such file or directory|Illegal byte sequence)"
+    ``EILSEQ`` shows up with rootless Podman (FUSE-backed paths) and on filesystems
+    that reject non-UTF-8 names, like ZFS with ``utf8only=on``.
+
+    See: https://github.com/pallets/click/issues/2634
+    """
+    path = tmp_path / "\udcff"
+    match = (
+        # Common case: �': No such file or directory.
+        r"(�': No such file or directory"
+        # BSD/macOS libc special case (EILSEQ).
+        r"|Illegal byte sequence"
+        # glibc special case (EILSEQ).
+        r"|Invalid or incomplete multibyte or wide character)"
+    )
     with pytest.raises(click.BadParameter, match=match):
         type.convert(path, None, None)
 

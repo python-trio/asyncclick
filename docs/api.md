@@ -72,6 +72,10 @@ classes and functions.
 ```
 
 ```{eval-rst}
+.. autofunction:: get_pager_file
+```
+
+```{eval-rst}
 .. autofunction:: prompt
 ```
 
@@ -276,6 +280,10 @@ classes and functions.
 
 ```{eval-rst}
 .. autoexception:: FileError
+```
+
+```{eval-rst}
+.. autoexception:: NoSuchCommand
 ```
 
 ```{eval-rst}

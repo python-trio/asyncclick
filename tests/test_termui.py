@@ -1,12 +1,21 @@
+import contextlib
+import gc
+import io
 import platform
+import shlex
+import shutil
+import sys
 import tempfile
 import time
+from unittest.mock import patch
 
 import pytest
 
 import asyncclick as click
 import asyncclick._termui_impl
 from asyncclick._compat import WIN
+from asyncclick._termui_impl import Editor
+from asyncclick._utils import UNSET
 from asyncclick.exceptions import BadParameter
 from asyncclick.exceptions import MissingParameter
 
@@ -393,7 +402,7 @@ def test_edit(runner):
         result = click.edit(filename=named_tempfile.name, editor="sed -i~ 's/$/Test/'")
         assert result is None
 
-        # We need ot reopen the file as it becomes unreadable after the edit.
+        # We need to reopen the file as it becomes unreadable after the edit.
         with open(named_tempfile.name) as reopened_file:
             # POSIX says that when sed writes a pattern space to output then it
             # is immediately followed by a newline and so the expected result
@@ -403,6 +412,534 @@ def test_edit(runner):
             # end of last line.  Hence the input data (see above) should be
             # terminated by newline too.
             assert reopened_file.read() == "aTest\nbTest\n"
+
+
+@pytest.mark.parametrize(
+    ("editor_cmd", "filenames", "expected_args"),
+    [
+        pytest.param(
+            "myeditor --wait --flag",
+            ["file1.txt", "file2.txt"],
+            ["myeditor", "--wait", "--flag", "file1.txt", "file2.txt"],
+            id="editor with args",
+        ),
+        pytest.param(
+            "vi",
+            ['file"; rm -rf / ; echo "'],
+            ["vi", 'file"; rm -rf / ; echo "'],
+            id="shell metacharacters in filename",
+        ),
+        # Issue #1026: editor path with spaces must be quoted.
+        pytest.param(
+            '"C:\\Program Files\\Sublime Text 3\\sublime_text.exe"',
+            ["f.txt"],
+            ["C:\\Program Files\\Sublime Text 3\\sublime_text.exe", "f.txt"],
+            id="quoted windows path with spaces",
+        ),
+        # PR #1477: pager/editor command with flags, like ``less -FRSX``.
+        pytest.param(
+            "less -FRSX",
+            ["f.txt"],
+            ["less", "-FRSX", "f.txt"],
+            id="command with flags",
+        ),
+        # Issue #1026: quoted command with ``--wait`` flag.
+        pytest.param(
+            '"my command" --option value arg',
+            ["f.txt"],
+            ["my command", "--option", "value", "arg", "f.txt"],
+            id="quoted command with args",
+        ),
+        # PR #1477: unquoted unix path.
+        pytest.param(
+            "/usr/bin/vim",
+            ["f.txt"],
+            ["/usr/bin/vim", "f.txt"],
+            id="unix absolute path",
+        ),
+        # Issue #1026: macOS path with escaped space.
+        pytest.param(
+            "/Applications/Sublime\\ Text.app/Contents/SharedSupport/bin/subl",
+            ["f.txt"],
+            ["/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl", "f.txt"],
+            id="escaped space in unix path",
+        ),
+        pytest.param(
+            "  vim  ",
+            ["f.txt"],
+            ["vim", "f.txt"],
+            id="leading and trailing whitespace",
+        ),
+        pytest.param(
+            "vim\tf.txt",
+            [],
+            ["vim", "f.txt"],
+            id="tab-separated tokens",
+        ),
+        pytest.param(
+            "'/Applications/My Editor.app/Contents/MacOS/editor'",
+            ["f.txt"],
+            ["/Applications/My Editor.app/Contents/MacOS/editor", "f.txt"],
+            id="single-quoted path with spaces",
+        ),
+        pytest.param(
+            '"my editor" --wait --new-window',
+            ["file 1.txt", "file 2.txt"],
+            ["my editor", "--wait", "--new-window", "file 1.txt", "file 2.txt"],
+            id="quoted editor with multiple flags and filenames with spaces",
+        ),
+        pytest.param(
+            "vim -u NONE -N",
+            ["f.txt"],
+            ["vim", "-u", "NONE", "-N", "f.txt"],
+            id="multiple short flags",
+        ),
+        pytest.param(
+            "editor",
+            ['file"name.txt'],
+            ["editor", 'file"name.txt'],
+            id="filename with double quote",
+        ),
+        pytest.param(
+            "editor",
+            ["file'name.txt"],
+            ["editor", "file'name.txt"],
+            id="filename with single quote",
+        ),
+    ],
+)
+def test_editor_path_normalization(editor_cmd, filenames, expected_args):
+    with patch("subprocess.Popen") as mock_popen:
+        mock_popen.return_value.wait.return_value = 0
+        Editor(editor=editor_cmd).edit_files(filenames)
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[1].get("args") or mock_popen.call_args[0][0]
+        assert args == expected_args
+        assert mock_popen.call_args[1].get("shell") is None
+
+
+@pytest.mark.skipif(not WIN, reason="Windows-specific editor paths")
+@pytest.mark.parametrize(
+    ("editor_cmd", "expected_cmd"),
+    [
+        pytest.param(
+            "notepad",
+            ["notepad"],
+            id="plain notepad",
+        ),
+        pytest.param(
+            '"C:\\Program Files\\Sublime Text 3\\sublime_text.exe" --wait',
+            ["C:\\Program Files\\Sublime Text 3\\sublime_text.exe", "--wait"],
+            id="quoted path with flag",
+        ),
+    ],
+)
+def test_editor_windows_path_normalization(editor_cmd, expected_cmd):
+    """Windows-specific tests: verify ``Popen`` receives unquoted paths that
+    ``subprocess.list2cmdline`` can re-quote for ``CreateProcess``."""
+    with patch("subprocess.Popen") as mock_popen:
+        mock_popen.return_value.wait.return_value = 0
+        Editor(editor=editor_cmd).edit_files(["f.txt"])
+
+        args = mock_popen.call_args[1].get("args") or mock_popen.call_args[0][0]
+        assert args == expected_cmd + ["f.txt"]
+        assert mock_popen.call_args[1].get("shell") is None
+
+
+def test_editor_env_passed_through():
+    with patch("subprocess.Popen") as mock_popen:
+        mock_popen.return_value.wait.return_value = 0
+        Editor(editor="vi", env={"MY_VAR": "1"}).edit_files(["f.txt"])
+
+        env = mock_popen.call_args[1].get("env")
+        assert env is not None
+        assert env["MY_VAR"] == "1"
+
+
+def test_editor_failure_exception():
+    with patch("subprocess.Popen") as mock_popen:
+        mock_popen.return_value.wait.return_value = 1
+        with pytest.raises(click.ClickException, match="Editing failed"):
+            Editor(editor="vi").edit_files(["f.txt"])
+
+
+def test_editor_nonexistent_exception():
+    with patch("subprocess.Popen", side_effect=OSError("not found")):
+        with pytest.raises(click.ClickException, match="not found"):
+            Editor(editor="nonexistent").edit_files(["f.txt"])
+
+
+@pytest.mark.parametrize(
+    ("pager_env", "expected_parts"),
+    [
+        # Simple commands.
+        pytest.param("cat", ["cat"], id="simple command"),
+        pytest.param("less", ["less"], id="less"),
+        pytest.param("less -FRSX", ["less", "-FRSX"], id="command with flags"),
+        # Whitespace handling.
+        pytest.param("", [], id="empty string"),
+        pytest.param("   ", [], id="whitespace only"),
+        pytest.param("  less  ", ["less"], id="leading and trailing spaces"),
+        pytest.param("less\t-R", ["less", "-R"], id="tab as separator"),
+        # Quoted Windows paths: quotes are stripped in POSIX mode (the
+        # default), preserving backslashes inside quoted tokens (issue #1026).
+        pytest.param(
+            '"C:\\Program Files\\Git\\usr\\bin\\less.exe"',
+            ["C:\\Program Files\\Git\\usr\\bin\\less.exe"],
+            id="quoted windows path with spaces",
+        ),
+        pytest.param(
+            '"C:\\Program Files\\Git\\usr\\bin\\less.exe" -R',
+            ["C:\\Program Files\\Git\\usr\\bin\\less.exe", "-R"],
+            id="quoted windows path with flag",
+        ),
+        # Single-quoted path.
+        pytest.param(
+            "'/usr/local/bin/my pager'",
+            ["/usr/local/bin/my pager"],
+            id="single-quoted path with spaces",
+        ),
+        # Unix paths.
+        pytest.param("/usr/bin/less", ["/usr/bin/less"], id="unix absolute path"),
+        pytest.param(
+            "/usr/bin/my\\ pager",
+            ["/usr/bin/my pager"],
+            id="escaped space in unix path",
+        ),
+        # PR #1477: POSIX mode (the default) eats unquoted backslashes.
+        # On Windows, users must quote paths that contain backslashes.
+        pytest.param(
+            "C:\\path\\to\\exe /test other\\path",
+            ["C:pathtoexe", "/test", "otherpath"],
+            id="unquoted backslashes eaten in POSIX mode",
+        ),
+    ],
+)
+def test_pager_shlex_split(pager_env, expected_parts):
+    """Verify shlex.split produces the expected argv for PAGER values.
+
+    Tests the splitting logic used by :func:`click._termui_impl.pager` to
+    turn the ``PAGER`` environment variable into an ``argv`` list. See
+    issue #1026, PR #1477, PR #1543, PR #2775.
+    """
+    assert shlex.split(pager_env) == expected_parts
+
+
+def _get_real_pager_command() -> str:
+    """Return a real pager binary path used to exercise the pipe pager branch.
+
+    ..warning::
+        Unix-only for now: ``more.com`` on Windows is interactive and goes
+        through ``_tempfilepager`` rather than ``_pipepager``.
+    """
+    pager_path = shutil.which("cat")
+    assert pager_path is not None, "cat not available"
+    return pager_path
+
+
+def _run_get_pager_file_with_real_pager(monkeypatch, capfd, writer, color=False):
+    """Run through the pipe pager backend selected by ``PAGER``."""
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setitem(
+        click._termui_impl.os.environ, "PAGER", _get_real_pager_command()
+    )
+
+    with click.get_pager_file(color=color) as pager:
+        writer(pager)
+
+    # The real pager writes to the process stdout; stderr should stay quiet.
+    out, err = capfd.readouterr()
+    assert err == ""
+    return out
+
+
+def _write_pager_from_multiple_sites(pager):
+    pager.write("prefix\n")
+    click.echo("middle", file=pager)
+    pager.write("suffix\n")
+
+
+@pytest.mark.skipif(
+    WIN,
+    reason="Exercises the pipe pager path; Windows uses _tempfilepager.",
+)
+@pytest.mark.parametrize(
+    ("writer", "color", "expected"),
+    [
+        pytest.param(
+            _write_pager_from_multiple_sites,
+            False,
+            "prefix\nmiddle\nsuffix\n",
+            id="multiple write sites",
+        ),
+        pytest.param(
+            lambda pager: pager.write("hello\n"), False, "hello\n", id="plain text"
+        ),
+        pytest.param(
+            lambda pager: pager.write(click.style("hello", fg="red") + "\n"),
+            False,
+            "hello\n",
+            id="strip ansi",
+        ),
+        pytest.param(
+            lambda pager: pager.write(click.style("hello", fg="red") + "\n"),
+            True,
+            click.style("hello", fg="red") + "\n",
+            id="preserve ansi",
+        ),
+        pytest.param(lambda pager: pager.write(""), False, "", id="empty string"),
+    ],
+)
+def test_get_pager_file_with_real_pager_binary_stream(
+    monkeypatch, capfd, writer, color, expected
+):
+    """A real pager should exercise the BinaryIO branch."""
+    output = _run_get_pager_file_with_real_pager(
+        monkeypatch, capfd, writer, color=color
+    )
+
+    assert output == expected
+
+
+@pytest.mark.skipif(
+    WIN,
+    reason="Exercises the pipe pager path; Windows uses _tempfilepager.",
+)
+@pytest.mark.parametrize(
+    ("color", "expected"),
+    [
+        pytest.param(False, "hello\n", id="strip ansi"),
+        pytest.param(True, click.style("hello", fg="red") + "\n", id="preserve ansi"),
+    ],
+)
+def test_echo_via_pager_real_pager_handles_ansi(monkeypatch, capfd, color, expected):
+    """``echo_via_pager`` should honor ``color`` like ``get_pager_file``."""
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setitem(
+        click._termui_impl.os.environ, "PAGER", _get_real_pager_command()
+    )
+
+    click.echo_via_pager(click.style("hello", fg="red"), color=color)
+
+    out, err = capfd.readouterr()
+    assert err == ""
+    assert out == expected
+
+
+def test_echo_via_pager_streams_each_write(monkeypatch):
+    """Each write is flushed so a slow generator streams to the pager
+    incrementally instead of buffering until the end (issues #3242, #2542).
+    """
+    calls = []
+
+    class RecordingStream(io.StringIO):
+        def __init__(self):
+            super().__init__()
+            self.color = None
+
+        def write(self, s):
+            calls.append("write")
+            return super().write(s)
+
+        def flush(self):
+            calls.append("flush")
+
+    stream = RecordingStream()
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: False)
+    monkeypatch.setattr(click._termui_impl, "_default_text_stdout", lambda: stream)
+
+    def generate():
+        yield "a\n"
+        yield "b\n"
+        yield "c\n"
+
+    click.echo_via_pager(generate())
+
+    # No two writes are adjacent: every chunk is flushed before the next one,
+    # so the pager sees output as it is produced.
+    assert not any(
+        calls[i] == "write" and calls[i + 1] == "write" for i in range(len(calls) - 1)
+    )
+    assert calls.count("write") == 4  # three chunks plus the trailing newline
+    assert stream.getvalue() == "a\nb\nc\n\n"
+
+
+def test_get_pager_file_pager_missing_binary_falls_back(monkeypatch, tmp_path):
+    """``PAGER`` pointing to a nonexistent binary falls back to the text stdout."""
+    pager_out = tmp_path / "pager_out.txt"
+
+    monkeypatch.setitem(
+        click._termui_impl.os.environ,
+        "PAGER",
+        "click-tests-nonexistent-pager-9b3f2",
+    )
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+
+    with pager_out.open("w", encoding="utf-8") as text_stream:
+        monkeypatch.setattr(
+            click._termui_impl, "_default_text_stdout", lambda: text_stream
+        )
+
+        with click.get_pager_file() as pager:
+            pager.write("hello\n")
+
+    assert pager_out.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_get_pager_file_pager_unset_falls_back_when_no_default(monkeypatch, tmp_path):
+    """``PAGER`` unset still works when the platform default isn't installed."""
+    pager_out = tmp_path / "pager_out.txt"
+
+    monkeypatch.delitem(click._termui_impl.os.environ, "PAGER", raising=False)
+    monkeypatch.delitem(click._termui_impl.os.environ, "TERM", raising=False)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    with pager_out.open("w", encoding="utf-8") as text_stream:
+        monkeypatch.setattr(
+            click._termui_impl, "_default_text_stdout", lambda: text_stream
+        )
+
+        with click.get_pager_file() as pager:
+            pager.write("hello\n")
+
+    assert pager_out.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_get_pager_file_missing_pager_keeps_borrowed_stream_open(monkeypatch):
+    """A missing ``PAGER`` must not close the borrowed stdout (issue #3449).
+
+    The ``8.4.0`` regression was only fixed for the no-tty ``_nullpager`` path;
+    the ``_pipepager``/``_tempfilepager`` fallbacks (reached in a tty when
+    ``PAGER`` resolves to nothing) used to close the borrowed stream too.
+    """
+    buffer = io.BytesIO()
+    stream = io.TextIOWrapper(buffer, encoding="utf-8")
+
+    monkeypatch.setitem(
+        click._termui_impl.os.environ,
+        "PAGER",
+        "click-tests-nonexistent-pager-9b3f2",
+    )
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setattr(click._termui_impl, "_default_text_stdout", lambda: stream)
+
+    with click.get_pager_file() as pager:
+        pager.write("hello\n")
+
+    # Drop the wrapper reference and force finalization: the old bug closed the
+    # borrowed buffer when the TextIOWrapper built by get_pager_file was
+    # garbage-collected.
+    del pager
+    gc.collect()
+
+    assert not buffer.closed
+    assert not stream.closed
+    assert buffer.getvalue().replace(b"\r\n", b"\n") == b"hello\n"
+
+
+def test_echo_via_pager_tty_pager_missing(runner, monkeypatch):
+    """``echo_via_pager`` through the tty fallback keeps ``CliRunner`` working.
+
+    Regression for issue #3449 via the pager fallback: a tty with ``PAGER``
+    pointing at a missing binary used to close the runner's stdout, breaking
+    ``CliRunner.invoke``.
+    """
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setitem(
+        click._termui_impl.os.environ,
+        "PAGER",
+        "click-tests-nonexistent-pager-9b3f2",
+    )
+
+    @click.command()
+    def cli():
+        click.echo_via_pager("Hello, Click!")
+
+    result = runner.invoke(cli)
+    assert not result.exception
+    assert result.output == "Hello, Click!\n"
+
+
+@pytest.mark.parametrize(
+    ("color", "expected"),
+    [
+        pytest.param(False, "hello\n", id="strip ansi"),
+        pytest.param(True, click.style("hello", fg="red") + "\n", id="preserve ansi"),
+    ],
+)
+def test_get_pager_file_nullpager_wraps_textio_stream(
+    monkeypatch, tmp_path, color, expected
+):
+    """When paging falls back to a real TextIO stream, ``.buffer`` is wrapped."""
+    pager_out = tmp_path / "pager_out.txt"
+
+    with pager_out.open("w", encoding="utf-8") as text_stream:
+        monkeypatch.setattr(
+            click._termui_impl, "_default_text_stdout", lambda: text_stream
+        )
+        monkeypatch.setattr(
+            click._termui_impl, "isatty", lambda stream: stream is not sys.stdin
+        )
+
+        with click.get_pager_file(color=color) as pager:
+            pager.write(click.style("hello", fg="red") + "\n")
+
+    assert pager_out.read_text(encoding="utf-8") == expected
+
+
+def test_get_pager_file_nullpager_keeps_stringio_stream(monkeypatch):
+    """The no-stdout fallback should keep a text-only stream and set ``.color``."""
+
+    stream = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(click._termui_impl, "StringIO", lambda: stream)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: False)
+
+    styled_text = click.style("hello", fg="red")
+
+    with click.get_pager_file(color=False) as pager:
+        pager.write(styled_text)
+
+    assert not stream.closed
+    assert stream.getvalue() == styled_text
+
+
+def test_get_pager_file_flushes_stream_on_exception(monkeypatch):
+    """Exceptions should still flush the yielded stream in ``finally``."""
+
+    class FlushableTextStream(io.StringIO):
+        def __init__(self):
+            super().__init__()
+            self.color = None
+            self.flush_calls = 0
+
+        def flush(self):
+            self.flush_calls += 1
+
+    stream = FlushableTextStream()
+
+    @contextlib.contextmanager
+    def pager_contextmanager(color=None):
+        yield stream, "utf-8", color
+
+    monkeypatch.setattr(
+        click._termui_impl, "_pager_contextmanager", pager_contextmanager
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with click.get_pager_file() as pager:
+            assert pager is stream
+            raise RuntimeError("boom")
+
+    assert stream.flush_calls == 1
+
+
+def test_editor_unclosed_quote():
+    """An unclosed quote in the editor command raises ValueError."""
+    with pytest.raises(ValueError, match="No closing quotation"):
+        Editor(editor='"unclosed').edit_files(["f.txt"])
 
 
 @pytest.mark.parametrize(
@@ -495,6 +1032,58 @@ def test_false_show_default_cause_no_default_display_in_prompt(runner):
     # is False
     result = runner.invoke(cmd, input="my-input", standalone_mode=False)
     assert "my-default-value" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("show_default", "default", "user_input", "in_prompt", "not_in_prompt"),
+    [
+        # Regular string replaces the actual default in the prompt.
+        ("custom", "actual", "\n", "(custom)", "actual"),
+        # String with spaces.
+        ("custom label", "actual", "\n", "(custom label)", "actual"),
+        # Unicode characters.
+        ("∞", "0", "\n", "(∞)", None),
+        # Numeric default: custom string hides the number.
+        ("unlimited", 42, "\n", "(unlimited)", "42"),
+        # Explicit default=None: custom string still appears, must provide input.
+        ("computed at runtime", None, "value\n", "(computed at runtime)", None),
+        # No default kwarg at all (internal UNSET sentinel): same as None.
+        ("computed at runtime", UNSET, "value\n", "(computed at runtime)", None),
+        # Empty string is falsy: suppresses any default display.
+        ("", "actual", "\n", None, "actual"),
+    ],
+    ids=[
+        "simple-string",
+        "string-with-spaces",
+        "unicode",
+        "numeric-default",
+        "default-is-none",
+        "default-is-unset",
+        "empty-string-is-falsy",
+    ],
+)
+def test_string_show_default_in_prompt(
+    runner, show_default, default, user_input, in_prompt, not_in_prompt
+):
+    """When show_default is a string, the prompt should display that
+    string in parentheses instead of the actual default value,
+    matching the help text behavior. See pallets/click#2836."""
+
+    option_kwargs = {"show_default": show_default, "prompt": True}
+    if default is not UNSET:
+        option_kwargs["default"] = default
+
+    @click.command()
+    @click.option("--arg1", **option_kwargs)
+    def cmd(arg1):
+        click.echo(arg1)
+
+    result = runner.invoke(cmd, input=user_input, standalone_mode=False)
+    prompt_line = result.output.split("\n")[0]
+    if in_prompt is not None:
+        assert in_prompt in prompt_line
+    if not_in_prompt is not None:
+        assert not_in_prompt not in prompt_line
 
 
 REPEAT = object()
@@ -605,9 +1194,13 @@ FLAG_VALUE_PROMPT_CASES = [
     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "", True),
     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "y", True),
     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "n", False),
-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "", False),
-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "y", True),
-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "n", False),
+    # For boolean flags, default=True is a literal value, not a sentinel meaning
+    # "activate flag", so the prompt shows [Y/n] with default=True. See:
+    # https://github.com/pallets/click/issues/3111
+    # https://github.com/pallets/click/pull/3239
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "", True),
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "y", True),
+    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "n", False),
     # default=False
     ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "", False),
     ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "y", True),
@@ -711,3 +1304,259 @@ def test_flag_value_prompt(
         assert result.output == expected_output
         assert not result.stderr
         assert result.exit_code == 0 if expected not in (REPEAT, INVALID) else 1
+
+
+class _CustomTypeNoValue(click.ParamType):
+    name = "custom"
+
+    def convert(self, value, param, ctx):
+        if len(value) < 4:
+            self.fail("Password must be at least 4 characters", param, ctx)
+        return value
+
+
+class _CustomTypeWithRawValue(click.ParamType):
+    name = "custom_raw"
+
+    def convert(self, value, param, ctx):
+        if value == "bad":
+            self.fail(f"rejected: {value}", param, ctx)
+        return value
+
+
+class _PasswordLengthType(click.ParamType):
+    """Mirrors the issue's original use case: a password validator
+    that references the user-typed value in its error message without
+    quoting it.
+    """
+
+    name = "password"
+
+    def convert(self, value, param, ctx):
+        if len(value) < 10:
+            self.fail(f"{value} is too short", param, ctx)
+        return value
+
+
+class _MixedQuotedAndRawType(click.ParamType):
+    """Custom type that mentions the user input both quoted (built-in
+    pattern) and raw within the same message.
+    """
+
+    name = "mixed"
+
+    def convert(self, value, param, ctx):
+        self.fail(f"got {value!r} which is the same as {value}", param, ctx)
+
+
+class _StaticMessageType(click.ParamType):
+    """Custom type whose error message never references the value."""
+
+    name = "static"
+
+    def convert(self, value, param, ctx):
+        self.fail("Authentication failed for this account", param, ctx)
+
+
+class _RejectAllRawType(click.ParamType):
+    """Always rejects, with the raw value (unquoted) in the message."""
+
+    name = "reject_all_raw"
+
+    def convert(self, value, param, ctx):
+        self.fail(f"rejected: {value}", param, ctx)
+
+
+class _MultiRawType(click.ParamType):
+    """Mentions the raw value multiple times in the same message."""
+
+    name = "multi_raw"
+
+    def convert(self, value, param, ctx):
+        self.fail(f"got {value} but {value} is bad", param, ctx)
+
+
+class _MultiReprType(click.ParamType):
+    """Mentions ``repr(value)`` multiple times in the same message."""
+
+    name = "multi_repr"
+
+    def convert(self, value, param, ctx):
+        self.fail(f"got {value!r} and {value!r}", param, ctx)
+
+
+class _ApostropheReprType(click.ParamType):
+    """Custom type whose ``repr(value)`` switches to double quotes when
+    the value itself contains a single quote.
+    """
+
+    name = "apostrophe_repr"
+
+    def convert(self, value, param, ctx):
+        self.fail(f"rejected {value!r}", param, ctx)
+
+
+@pytest.mark.parametrize(
+    ("type", "user_input", "expected_fragment", "unexpected_fragment"),
+    [
+        pytest.param(
+            click.INT,
+            "bad",
+            "'***' is not a valid integer",
+            "bad",
+            id="builtin-int-masks-repr-value",
+        ),
+        pytest.param(
+            _CustomTypeNoValue(),
+            "bad",
+            "Password must be at least 4 characters",
+            None,
+            id="custom-no-value-shows-message",
+        ),
+        pytest.param(
+            _CustomTypeWithRawValue(),
+            "bad",
+            "rejected: '***'",
+            "bad",
+            id="custom-raw-value-masked",
+        ),
+        pytest.param(
+            _PasswordLengthType(),
+            "PASSWORD",
+            "'***' is too short",
+            "PASSWORD",
+            id="unquoted-custom-message-should-mask-not-fallback",
+        ),
+        pytest.param(
+            _MixedQuotedAndRawType(),
+            "leakybits",
+            "got '***' which is the same as '***'",
+            "leakybits",
+            id="mixed-quoted-and-raw-both-masked-at-source",
+        ),
+        pytest.param(
+            click.IntRange(min=10, max=99),
+            "1",
+            "is not in the range",
+            None,
+            id="intrange-numeric-substring-falls-back-to-generic",
+        ),
+        pytest.param(
+            _StaticMessageType(),
+            "ent",
+            "Authentication failed for this account",
+            None,
+            id="partial-word-match-falls-back-to-generic",
+        ),
+        # When the raw (unquoted) value appears in the message, mask it instead
+        # of replacing the whole message with a generic fallback that throws
+        # useful information away.
+        pytest.param(
+            _RejectAllRawType(),
+            "secret",
+            "rejected: '***'",
+            "secret",
+            id="raw-value-should-be-masked-not-fallback",
+        ),
+        # When the raw value occurs more than
+        # once unquoted, every occurrence must be masked.
+        pytest.param(
+            _MultiRawType(),
+            "secret",
+            "got '***' but '***' is bad",
+            "secret",
+            id="multi-occurrence-raw-mask-all",
+        ),
+        pytest.param(
+            _MultiReprType(),
+            "secret",
+            "got '***' and '***'",
+            "secret",
+            id="multi-occurrence-repr-mask-all",
+        ),
+        pytest.param(
+            _PasswordLengthType(),
+            "a.b*c+",
+            "'***' is too short",
+            "a.b*c+",
+            id="regex-special-chars-must-be-escaped",
+        ),
+        pytest.param(
+            _PasswordLengthType(),
+            "пароль",
+            "'***' is too short",
+            "пароль",
+            id="unicode-value-masked",
+        ),
+        pytest.param(
+            _ApostropheReprType(),
+            "it's",
+            "rejected '***'",
+            "it's",
+            id="apostrophe-in-value-uses-double-quote-repr",
+        ),
+        pytest.param(
+            _MixedQuotedAndRawType(),
+            "leakybits",
+            "got '***' which is the same as '***'",
+            "leakybits",
+            id="mixed-quoted-and-raw-mask-both",
+        ),
+    ],
+)
+def test_hide_input_error_message(
+    runner, type, user_input, expected_fragment, unexpected_fragment
+):
+    """https://github.com/pallets/click/issues/2809"""
+
+    @click.command()
+    @click.option("--password", prompt=True, hide_input=True, type=type)
+    def cli(password):
+        click.echo(password)
+
+    result = runner.invoke(cli, input=user_input)
+    assert expected_fragment in result.output
+    if unexpected_fragment is not None:
+        assert unexpected_fragment not in result.output
+
+
+def test_hide_input_confirmation_prompt_mismatch_unaffected(runner):
+    """The ``hide_input`` mask logic only applies to ``value_proc``
+    failures. The separate ``confirmation_prompt`` mismatch path must
+    keep emitting its own message, with no value leak from either entry.
+    """
+
+    @click.command()
+    @click.option("--password", prompt=True, confirmation_prompt=True, hide_input=True)
+    def cli(password):
+        click.echo(f"got: {password}")
+
+    # First pair mismatches, second pair matches.
+    result = runner.invoke(cli, input="firstone\nsecondone\nfinalone\nfinalone\n")
+    assert "Error: The two entered values do not match." in result.output
+    assert "firstone" not in result.output
+    assert "secondone" not in result.output
+    # Successful prompt echoes the final value back via the command body.
+    assert "got: finalone" in result.output
+    assert result.exit_code == 0
+
+
+def test_hide_input_value_never_leaks_when_err_true(runner):
+    """``click.prompt(..., err=True)`` routes its error message to
+    stderr. The masking logic must apply on that path too: the raw
+    input must not appear on either stream.
+    """
+
+    @click.command()
+    def cli():
+        value = click.prompt(
+            "Password",
+            hide_input=True,
+            type=_PasswordLengthType(),
+            err=True,
+        )
+        click.echo(value)
+
+    result = runner.invoke(cli, input="leaky\n", mix_stderr=False)
+    assert "leaky" not in result.stdout
+    assert "leaky" not in result.stderr

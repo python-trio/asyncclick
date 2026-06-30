@@ -8,9 +8,8 @@ from contextlib import nullcontext
 from decimal import Decimal
 from fractions import Fraction
 from functools import partial
+from io import BytesIO
 from io import StringIO
-from pathlib import Path
-from tempfile import tempdir
 from unittest.mock import patch
 
 import pytest
@@ -98,6 +97,10 @@ def test_echo_custom_file():
     f = StringIO()
     click.echo("hello", file=f)
     assert f.getvalue() == "hello\n"
+
+    b = BytesIO()
+    click.echo(b"", b)
+    assert b.getvalue() == b"\n"
 
 
 def test_echo_no_streams(monkeypatch, runner):
@@ -229,7 +232,43 @@ async def test_prompts_abort(monkeypatch, capsys):
         click.echo("interrupted")
 
     out, err = capsys.readouterr()
-    assert out == "Password:\ninterrupted\n"
+    # On non-Windows, prompt is passed directly to getpass, not echoed separately
+    assert out == "\ninterrupted\n"
+
+
+@pytest.mark.skipif(WIN, reason="Different behavior on windows.")
+@pytest.mark.parametrize(
+    ("call", "expected_prompt"),
+    [
+        (lambda: click.prompt("Name"), "Name: "),
+        (lambda: click.prompt("Pw", hide_input=True), "Pw: "),
+        (lambda: click.prompt("IP", prompt_suffix="."), "IP."),
+        (lambda: click.confirm("OK"), "OK [y/N]: "),
+    ],
+    ids=["prompt", "prompt-hidden", "prompt-custom-suffix", "confirm"],
+)
+@pytest.mark.anyio
+async def test_full_prompt_passed_to_readline(monkeypatch, call, expected_prompt):
+    """On non-Windows, prompt and confirm pass the full prompt text to the
+    underlying prompt function so readline handles editing correctly.
+
+    https://github.com/pallets/click/issues/2968
+    https://github.com/pallets/click/pull/2969
+    """
+    received = []
+
+    def capture(text):
+        received.append(text)
+        return "y"
+
+    monkeypatch.setattr("asyncclick.termui.visible_prompt_func", capture)
+    monkeypatch.setattr("asyncclick.termui.hidden_prompt_func", capture)
+    import inspect
+
+    rv = call()
+    if inspect.isawaitable(rv):
+        await rv
+    assert received == [expected_prompt]
 
 
 def test_prompts_eof(runner):
@@ -253,6 +292,11 @@ def _test_gen_func():
 
 
 def _test_gen_func_fails():
+    raise RuntimeError("This is a test.")
+    yield  # unreachable, keeps this a generator function
+
+
+def _test_gen_func_yields_then_fails():
     yield "test"
     raise RuntimeError("This is a test.")
 
@@ -381,7 +425,7 @@ EchoViaPagerTest = namedtuple(
         ),
     ],
 )
-def test_echo_via_pager(monkeypatch, capfd, pager_cmd, test):
+def test_echo_via_pager(monkeypatch, capfd, pager_cmd, test, tmp_path):
     monkeypatch.setitem(os.environ, "PAGER", pager_cmd)
     monkeypatch.setattr(asyncclick._termui_impl, "isatty", lambda x: True)
 
@@ -393,8 +437,7 @@ def test_echo_via_pager(monkeypatch, capfd, pager_cmd, test):
 
     check_raise = pytest.raises(expected_error) if expected_error else nullcontext()
 
-    pager_out_tmp = Path(tempdir) / "pager_out.txt"
-    pager_out_tmp.unlink(missing_ok=True)
+    pager_out_tmp = tmp_path / "pager_out.txt"
     with pager_out_tmp.open("w") as f:
         force_subprocess_stdout = patch.object(
             subprocess,
@@ -418,6 +461,75 @@ def test_echo_via_pager(monkeypatch, capfd, pager_cmd, test):
     assert err == expected_stderr, (
         f"Unexpected stderr in test case '{test.description}'"
     )
+
+
+@pytest.mark.skipif(WIN, reason="Different behavior on windows.")
+def test_echo_via_pager_yields_before_exception(monkeypatch, tmp_path):
+    """A generator that yields then raises: click writes the partial output to
+    the pager stream before propagating the exception.
+
+    The pager file content is intentionally NOT asserted: pipe-drain timing
+    between click and the pager subprocess is outside click's control
+    (#2899, #3470). Spying on ``MaybeStripAnsi.write`` records what click sent
+    to the pager, which is deterministic regardless of scheduling.
+    """
+    monkeypatch.setitem(os.environ, "PAGER", "cat")
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda x: True)
+
+    writes: list[str] = []
+    real_write = click._termui_impl.MaybeStripAnsi.write
+
+    def spy(self, text):
+        writes.append(text)
+        return real_write(self, text)
+
+    monkeypatch.setattr(click._termui_impl.MaybeStripAnsi, "write", spy)
+
+    pager_out_tmp = tmp_path / "pager_out.txt"
+    with (
+        pager_out_tmp.open("w") as f,
+        patch.object(subprocess, "Popen", partial(subprocess.Popen, stdout=f)),
+        pytest.raises(RuntimeError, match="This is a test."),
+    ):
+        click.echo_via_pager(_test_gen_func_yields_then_fails())
+
+    assert "".join(writes) == "test", (
+        f"click should have written the yielded chunk before exception, got {writes!r}"
+    )
+
+
+@pytest.mark.stress
+@pytest.mark.skipif(WIN, reason="Different behavior on windows.")
+@pytest.mark.parametrize("_", range(1000))
+def test_stress_echo_via_pager_exception_cleanup(_, monkeypatch, tmp_path):
+    """Repeated exceptions during ``echo_via_pager`` must not leak subprocesses.
+
+    Regression coverage for the cleanup path in ``_pipepager``'s exception
+    handler (issue #2899, PR #3470). Each iteration spawns a real pager
+    subprocess, raises before any data is written and check there is no leak.
+    """
+    monkeypatch.setitem(os.environ, "PAGER", "cat")
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda x: True)
+
+    spawned: list[subprocess.Popen] = []
+    real_popen = subprocess.Popen
+
+    def tracking_popen(*args, **kwargs):
+        p = real_popen(*args, **kwargs)
+        spawned.append(p)
+        return p
+
+    pager_out_tmp = tmp_path / "pager_out.txt"
+    with (
+        pager_out_tmp.open("w") as f,
+        patch.object(subprocess, "Popen", partial(tracking_popen, stdout=f)),
+        pytest.raises(RuntimeError),
+    ):
+        click.echo_via_pager(_test_gen_func_fails())
+
+    assert spawned, "pager subprocess was never started"
+    for p in spawned:
+        assert p.returncode is not None, "pager subprocess not reaped"
 
 
 def test_echo_color_flag(monkeypatch, capfd):
@@ -491,17 +603,21 @@ async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert out == "Prompt to stdin with no suffix"
     assert err == ""
 
+    # On non-Windows the full prompt goes through redirect_stdout so
+    # nothing leaks to stdout when err=True.
+    # https://github.com/pallets/click/issues/2968
     emulate_input("asdlkj\n")
     await click.prompt("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
-    assert out == " "
-    assert err == "Prompt to stderr:"
+    assert out == ""
+    assert err == "Prompt to stderr: "
 
+    # https://github.com/pallets/click/issues/3019
     emulate_input("asdlkj\n")
     await click.prompt("Prompt to stderr with no suffix", prompt_suffix="", err=True)
     out, err = capfd.readouterr()
-    assert out == "x"
-    assert err == "Prompt to stderr with no suffi"
+    assert out == ""
+    assert err == "Prompt to stderr with no suffix"
 
     emulate_input("y\n")
     click.confirm("Prompt to stdin")
@@ -515,17 +631,19 @@ async def test_echo_writing_to_standard_error(capfd, monkeypatch):
     assert out == "Prompt to stdin with no suffix [y/N]"
     assert err == ""
 
+    # https://github.com/pallets/click/issues/2968
     emulate_input("y\n")
     click.confirm("Prompt to stderr", err=True)
     out, err = capfd.readouterr()
-    assert out == " "
-    assert err == "Prompt to stderr [y/N]:"
+    assert out == ""
+    assert err == "Prompt to stderr [y/N]: "
 
+    # https://github.com/pallets/click/issues/3019
     emulate_input("y\n")
     click.confirm("Prompt to stderr with no suffix", prompt_suffix="", err=True)
     out, err = capfd.readouterr()
-    assert out == "]"
-    assert err == "Prompt to stderr with no suffix [y/N"
+    assert out == ""
+    assert err == "Prompt to stderr with no suffix [y/N]"
 
     monkeypatch.setattr(click.termui, "isatty", lambda x: True)
     monkeypatch.setattr(click.termui, "getchar", lambda: " ")

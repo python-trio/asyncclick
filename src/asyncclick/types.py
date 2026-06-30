@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import abc
 import collections.abc as cabc
 import enum
 import os
 import stat
 import sys
 import typing as t
+import uuid
 from datetime import datetime
 from gettext import gettext as _
 from gettext import ngettext
@@ -24,10 +26,20 @@ if t.TYPE_CHECKING:
     from .core import Parameter
     from .shell_completion import CompletionItem
 
-ParamTypeValue = t.TypeVar("ParamTypeValue")
+_ValueT = t.TypeVar("_ValueT")
+_ValueT_contra = t.TypeVar("_ValueT_contra", contravariant=True)
+_ValueT_co = t.TypeVar("_ValueT_co", covariant=True)
+
+_FloatValueT = t.TypeVar("_FloatValueT", bound=float)
+_FloatValueT_co = t.TypeVar("_FloatValueT_co", bound=float, covariant=True)
 
 
-class ParamType:
+class ParamTypeInfoDict(t.TypedDict):
+    param_type: str
+    name: str
+
+
+class ParamType(t.Generic[_ValueT_co], abc.ABC):
     """Represents the type of a parameter. Validates and converts values
     from the command line or Python into the correct type.
 
@@ -43,10 +55,16 @@ class ParamType:
     -   It must be able to convert a value if the ``ctx`` and ``param``
         arguments are ``None``. This can occur when converting prompt
         input.
+
+    .. versionchanged:: 8.4.0
+        Now a generic abstract base class. Parameterize with the
+        converted value type (``ParamType[int]`` for an integer-returning
+        type) so that :meth:`convert` and downstream consumers carry the
+        narrowed return type.
     """
 
     is_composite: t.ClassVar[bool] = False
-    arity: t.ClassVar[int] = 1
+    arity: int = 1  # read-only
 
     #: the descriptive name of this type
     name: str
@@ -59,7 +77,7 @@ class ParamType:
     #: Windows).
     envvar_list_splitter: t.ClassVar[str | None] = None
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> ParamTypeInfoDict:
         """Gather information that could be useful for a tool generating
         user-facing documentation.
 
@@ -85,9 +103,10 @@ class ParamType:
         value: t.Any,
         param: Parameter | None = None,
         ctx: Context | None = None,
-    ) -> t.Any:
+    ) -> _ValueT_co | None:
         if value is not None:
             return self.convert(value, param, ctx)
+        return None
 
     def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
         """Returns the metavar default for this param if it provides one."""
@@ -101,7 +120,7 @@ class ParamType:
 
     def convert(
         self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+    ) -> _ValueT_co:
         """Convert the value to the correct type. This is not called if
         the value is ``None`` (the missing value).
 
@@ -121,7 +140,9 @@ class ParamType:
         :param ctx: The current context that arrived at this value. May
             be ``None``.
         """
-        return value
+        # The default returns the value as-is so subclasses that only customize
+        # metadata are not forced to redeclare ``convert``.
+        return t.cast("_ValueT_co", value)
 
     def split_envvar_value(self, rv: str) -> cabc.Sequence[str]:
         """Given a value from an environment variable this splits it up
@@ -160,77 +181,109 @@ class ParamType:
         return []
 
 
-class CompositeParamType(ParamType):
-    is_composite = True
+class CompositeParamType(ParamType[_ValueT_co]):
+    is_composite: t.ClassVar[bool] = True
 
     @property
-    def arity(self) -> int:  # type: ignore
-        raise NotImplementedError()
+    @abc.abstractmethod
+    def arity(self) -> int: ...  # type: ignore[override]
 
 
-class FuncParamType(ParamType):
-    def __init__(self, func: t.Callable[[t.Any], t.Any]) -> None:
-        self.name: str = func.__name__
+if t.TYPE_CHECKING:
+    # on Python 3.10 this will raise a TypeError
+
+    class FuncParamTypeInfoDict(
+        ParamTypeInfoDict,
+        t.Generic[_ValueT_contra, _ValueT_co],
+    ):
+        func: t.Callable[[_ValueT_contra], _ValueT_co]
+else:
+
+    class FuncParamTypeInfoDict(ParamTypeInfoDict):
+        func: t.Callable[[t.Any], t.Any]
+
+
+class FuncParamType(ParamType[_ValueT_co], t.Generic[_ValueT_contra, _ValueT_co]):
+    name: str
+    func: t.Callable[[_ValueT_contra], _ValueT_co]
+
+    def __init__(self, func: t.Callable[[_ValueT_contra], _ValueT_co]) -> None:
+        self.name = func.__name__
         self.func = func
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> FuncParamTypeInfoDict[_ValueT_contra, _ValueT_co]:
         info_dict = await super().to_info_dict()
         info_dict["func"] = self.func
         return info_dict
 
     def convert(
-        self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+        self, value: _ValueT_contra, param: Parameter | None, ctx: Context | None
+    ) -> _ValueT_co:
         try:
             return self.func(value)
-        except ValueError:
-            try:
-                value = str(value)
-            except UnicodeError:
-                value = value.decode("utf-8", "replace")
+        except ValueError as exc:
+            message = str(exc)
 
-            self.fail(value, param, ctx)
+            if not message:
+                try:
+                    message = str(value)
+                except UnicodeError:
+                    message = t.cast("bytes", value).decode("utf-8", "replace")
+
+            self.fail(message, param, ctx)
 
 
-class UnprocessedParamType(ParamType):
+class UnprocessedParamType(ParamType[t.Any]):
     name = "text"
 
     def convert(
-        self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+        self, value: _ValueT, param: Parameter | None, ctx: Context | None
+    ) -> _ValueT:
         return value
 
     def __repr__(self) -> str:
         return "UNPROCESSED"
 
 
-class StringParamType(ParamType):
+class StringParamType(ParamType[str]):
     name = "text"
 
     def convert(
         self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+    ) -> str:
         if isinstance(value, bytes):
             enc = _get_argv_encoding()
             try:
-                value = value.decode(enc)
+                return value.decode(enc)
             except UnicodeError:
                 fs_enc = sys.getfilesystemencoding()
                 if fs_enc != enc:
                     try:
-                        value = value.decode(fs_enc)
+                        return value.decode(fs_enc)
                     except UnicodeError:
-                        value = value.decode("utf-8", "replace")
+                        return value.decode("utf-8", "replace")
                 else:
-                    value = value.decode("utf-8", "replace")
-            return value
+                    return value.decode("utf-8", "replace")
         return str(value)
 
     def __repr__(self) -> str:
         return "STRING"
 
 
-class Choice(ParamType, t.Generic[ParamTypeValue]):
+if t.TYPE_CHECKING:
+    # on Python 3.10 this will raise a TypeError
+
+    class ChoiceInfoDict(ParamTypeInfoDict, t.Generic[_ValueT_co]):
+        choices: tuple[_ValueT_co, ...]
+        case_sensitive: bool
+else:
+
+    class ChoiceInfoDict(ParamTypeInfoDict):
+        choices: tuple[t.Any, ...]
+        case_sensitive: bool
+
+
+class Choice(ParamType[_ValueT_co], t.Generic[_ValueT_co]):
     """The choice type allows a value to be checked against a fixed set
     of supported values.
 
@@ -244,6 +297,11 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
     :param case_sensitive: Set to false to make choices case
         insensitive. Defaults to true.
 
+    .. versionchanged:: 8.4.0
+        Now generic in the choice value type. Parameterize with the type of
+        the choice values (``Choice[HashType]`` for an enum, ``Choice[str]``
+        for plain strings) to enable type-checked consumers.
+
     .. versionchanged:: 8.2.0
         Non-``str`` ``choices`` are now supported. It can additionally be any
         iterable. Before you were not recommended to pass anything but a list or
@@ -253,15 +311,18 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
         Choice normalization can be overridden via :meth:`normalize_choice`.
     """
 
-    name = "choice"
+    name: str = "choice"
+
+    choices: tuple[_ValueT_co, ...]
+    case_sensitive: bool
 
     def __init__(
-        self, choices: cabc.Iterable[ParamTypeValue], case_sensitive: bool = True
+        self, choices: cabc.Iterable[_ValueT_co], case_sensitive: bool = True
     ) -> None:
-        self.choices: cabc.Sequence[ParamTypeValue] = tuple(choices)
+        self.choices = tuple(choices)
         self.case_sensitive = case_sensitive
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> ChoiceInfoDict[_ValueT_co]:
         info_dict = await super().to_info_dict()
         info_dict["choices"] = self.choices
         info_dict["case_sensitive"] = self.case_sensitive
@@ -269,7 +330,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
 
     def _normalized_mapping(
         self, ctx: Context | None = None
-    ) -> cabc.Mapping[ParamTypeValue, str]:
+    ) -> cabc.Mapping[_ValueT_co, str]:
         """
         Returns mapping where keys are the original choices and the values are
         the normalized values that are accepted via the command line.
@@ -285,7 +346,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
             for choice in self.choices
         }
 
-    def normalize_choice(self, choice: ParamTypeValue, ctx: Context | None) -> str:
+    def normalize_choice(self, choice: object, ctx: Context | None) -> str:
         """
         Normalize a choice value, used to map a passed string to a choice.
         Each choice must have a unique normalized value.
@@ -306,7 +367,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
         return normed_value
 
     def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
-        if param.param_type_name == "option" and not param.show_choices:  # type: ignore
+        if param.param_type_name == "option" and not param.show_choices:  # type: ignore[attr-defined]
             choice_metavars = [
                 convert_type(type(choice)).name.upper() for choice in self.choices
             ]
@@ -335,7 +396,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
 
     def convert(
         self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> ParamTypeValue:
+    ) -> _ValueT_co:
         """
         For a given value from the parser, normalize it and find its
         matching normalized value in the list of choices. Then return the
@@ -372,7 +433,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
         ).format(value=value, choice=choices_str, choices=choices_str)
 
     def __repr__(self) -> str:
-        return f"Choice({list(self.choices)})"
+        return _("Choice({choices})").format(choices=list(self.choices))
 
     def shell_complete(
         self, ctx: Context, param: Parameter, incomplete: str
@@ -387,8 +448,7 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
         """
         from .shell_completion import CompletionItem
 
-        str_choices = map(str, self.choices)
-
+        str_choices = [self.normalize_choice(choice, ctx) for choice in self.choices]
         if self.case_sensitive:
             matched = (c for c in str_choices if c.startswith(incomplete))
         else:
@@ -398,7 +458,11 @@ class Choice(ParamType, t.Generic[ParamTypeValue]):
         return [CompletionItem(c) for c in matched]
 
 
-class DateTime(ParamType):
+class DateTimeInfoDict(ParamTypeInfoDict):
+    formats: cabc.Sequence[str]
+
+
+class DateTime(ParamType[datetime]):
     """The DateTime type converts date strings into `datetime` objects.
 
     The format strings which are checked are configurable, but default to some
@@ -421,19 +485,21 @@ class DateTime(ParamType):
 
     name = "datetime"
 
+    formats: cabc.Sequence[str]
+
     def __init__(self, formats: cabc.Sequence[str] | None = None):
-        self.formats: cabc.Sequence[str] = formats or [
+        self.formats = formats or [
             "%Y-%m-%d",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%d %H:%M:%S",
         ]
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> DateTimeInfoDict:
         info_dict = await super().to_info_dict()
         info_dict["formats"] = self.formats
         return info_dict
 
-    def get_metavar(self, param: Parameter, ctx: Context) -> str | None:
+    def get_metavar(self, param: Parameter, ctx: Context) -> str:
         return f"[{'|'.join(self.formats)}]"
 
     def _try_to_convert_date(self, value: t.Any, format: str) -> datetime | None:
@@ -444,7 +510,7 @@ class DateTime(ParamType):
 
     def convert(
         self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+    ) -> datetime:
         if isinstance(value, datetime):
             return value
 
@@ -469,12 +535,14 @@ class DateTime(ParamType):
         return "DateTime"
 
 
-class _NumberParamTypeBase(ParamType):
-    _number_class: t.ClassVar[type[t.Any]]
+class _NumberParamTypeBase(
+    ParamType[_ValueT_co], t.Generic[_ValueT_contra, _ValueT_co]
+):
+    _number_class: t.Callable[[_ValueT_contra], _ValueT_co]
 
     def convert(
-        self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+        self, value: _ValueT_contra, param: Parameter | None, ctx: Context | None
+    ) -> _ValueT_co:
         try:
             return self._number_class(value)
         except ValueError:
@@ -487,11 +555,39 @@ class _NumberParamTypeBase(ParamType):
             )
 
 
-class _NumberRangeBase(_NumberParamTypeBase):
+if t.TYPE_CHECKING:
+    # on Python 3.10 this will raise a TypeError
+
+    class NumberRangeInfoDict(ParamTypeInfoDict, t.Generic[_FloatValueT_co]):
+        min: _FloatValueT_co | None
+        max: _FloatValueT_co | None
+        min_open: bool
+        max_open: bool
+        clamp: bool
+else:
+
+    class NumberRangeInfoDict(ParamTypeInfoDict):
+        min: t.Any | None
+        max: t.Any | None
+        min_open: bool
+        max_open: bool
+        clamp: bool
+
+
+class _NumberRangeBase(
+    _NumberParamTypeBase[_ValueT_contra, _FloatValueT_co],
+    t.Generic[_ValueT_contra, _FloatValueT_co],
+):
+    min: _FloatValueT_co | None
+    max: _FloatValueT_co | None
+    min_open: bool
+    max_open: bool
+    clamp: bool
+
     def __init__(
         self,
-        min: float | None = None,
-        max: float | None = None,
+        min: _FloatValueT_co | None = None,
+        max: _FloatValueT_co | None = None,
         min_open: bool = False,
         max_open: bool = False,
         clamp: bool = False,
@@ -502,7 +598,7 @@ class _NumberRangeBase(_NumberParamTypeBase):
         self.max_open = max_open
         self.clamp = clamp
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> NumberRangeInfoDict[_FloatValueT_co]:
         info_dict = await super().to_info_dict()
         info_dict.update(
             min=self.min,
@@ -514,24 +610,26 @@ class _NumberRangeBase(_NumberParamTypeBase):
         return info_dict
 
     def convert(
-        self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+        self, value: _ValueT_contra, param: Parameter | None, ctx: Context | None
+    ) -> _FloatValueT_co:
         import operator
 
         rv = super().convert(value, param, ctx)
-        lt_min: bool = self.min is not None and (
+        min = self.min
+        max = self.max
+        lt_min: bool = min is not None and (
             operator.le if self.min_open else operator.lt
-        )(rv, self.min)
-        gt_max: bool = self.max is not None and (
+        )(rv, min)
+        gt_max: bool = max is not None and (
             operator.ge if self.max_open else operator.gt
-        )(rv, self.max)
+        )(rv, max)
 
         if self.clamp:
-            if lt_min:
-                return self._clamp(self.min, 1, self.min_open)  # type: ignore
+            if min is not None and lt_min:
+                return self._clamp(min, 1, self.min_open)
 
-            if gt_max:
-                return self._clamp(self.max, -1, self.max_open)  # type: ignore
+            if max is not None and gt_max:
+                return self._clamp(max, -1, self.max_open)
 
         if lt_min or gt_max:
             self.fail(
@@ -544,7 +642,15 @@ class _NumberRangeBase(_NumberParamTypeBase):
 
         return rv
 
-    def _clamp(self, bound: float, dir: t.Literal[1, -1], open: bool) -> float:
+    @abc.abstractmethod
+    def _clamp(
+        # Covariant type variables cannot be used in input positions, so we use a
+        # separate method-scoped type variable instead.
+        self: _NumberRangeBase[t.Any, _FloatValueT],
+        bound: _FloatValueT,
+        dir: t.Literal[1, -1],
+        open: bool,
+    ) -> _FloatValueT:
         """Find the valid value to clamp to bound in the given
         direction.
 
@@ -552,7 +658,7 @@ class _NumberRangeBase(_NumberParamTypeBase):
         :param dir: 1 or -1 indicating the direction to move.
         :param open: If true, the range does not include the bound.
         """
-        raise NotImplementedError
+        ...
 
     def _describe_range(self) -> str:
         """Describe the range for use in help text."""
@@ -573,7 +679,7 @@ class _NumberRangeBase(_NumberParamTypeBase):
         return f"<{type(self).__name__} {self._describe_range()}{clamp}>"
 
 
-class IntParamType(_NumberParamTypeBase):
+class IntParamType(_NumberParamTypeBase[t.SupportsInt | t.SupportsIndex, int]):
     name = "integer"
     _number_class = int
 
@@ -581,7 +687,7 @@ class IntParamType(_NumberParamTypeBase):
         return "INT"
 
 
-class IntRange(_NumberRangeBase, IntParamType):
+class IntRange(_NumberRangeBase[int, int], IntParamType):
     """Restrict an :data:`click.INT` value to a range of accepted
     values. See :ref:`ranges`.
 
@@ -598,16 +704,14 @@ class IntRange(_NumberRangeBase, IntParamType):
 
     name = "integer range"
 
-    def _clamp(  # type: ignore
-        self, bound: int, dir: t.Literal[1, -1], open: bool
-    ) -> int:
+    def _clamp(self, bound: int, dir: t.Literal[1, -1], open: bool) -> int:
         if not open:
             return bound
 
         return bound + dir
 
 
-class FloatParamType(_NumberParamTypeBase):
+class FloatParamType(_NumberParamTypeBase[t.SupportsFloat | t.SupportsIndex, float]):
     name = "float"
     _number_class = float
 
@@ -615,7 +719,7 @@ class FloatParamType(_NumberParamTypeBase):
         return "FLOAT"
 
 
-class FloatRange(_NumberRangeBase, FloatParamType):
+class FloatRange(_NumberRangeBase[float, float], FloatParamType):
     """Restrict a :data:`click.FLOAT` value to a range of accepted
     values. See :ref:`ranges`.
 
@@ -658,7 +762,7 @@ class FloatRange(_NumberRangeBase, FloatParamType):
         raise RuntimeError("Clamping is not supported for open bounds.")
 
 
-class BoolParamType(ParamType):
+class BoolParamType(ParamType[bool]):
     name = "boolean"
 
     bool_states: dict[str, bool] = {
@@ -727,14 +831,12 @@ class BoolParamType(ParamType):
         return "BOOL"
 
 
-class UUIDParameterType(ParamType):
+class UUIDParameterType(ParamType[uuid.UUID]):
     name = "uuid"
 
     def convert(
-        self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
-        import uuid
-
+        self, value: uuid.UUID | str, param: Parameter | None, ctx: Context | None
+    ) -> uuid.UUID:
         if isinstance(value, uuid.UUID):
             return value
 
@@ -751,7 +853,12 @@ class UUIDParameterType(ParamType):
         return "UUID"
 
 
-class File(ParamType):
+class FileInfoDict(ParamTypeInfoDict):
+    mode: str
+    encoding: str | None
+
+
+class File(ParamType[t.IO[t.Any]]):
     """Declares a parameter to be a file for reading or writing.  The file
     is automatically closed once the context tears down (after the command
     finished working).
@@ -784,6 +891,12 @@ class File(ParamType):
     name = "filename"
     envvar_list_splitter: t.ClassVar[str] = os.path.pathsep
 
+    mode: str
+    encoding: str | None
+    errors: str | None
+    lazy: bool | None
+    atomic: bool
+
     def __init__(
         self,
         mode: str = "r",
@@ -798,7 +911,7 @@ class File(ParamType):
         self.lazy = lazy
         self.atomic = atomic
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> FileInfoDict:
         info_dict = await super().to_info_dict()
         info_dict.update(mode=self.mode, encoding=self.encoding)
         return info_dict
@@ -820,8 +933,6 @@ class File(ParamType):
     ) -> t.IO[t.Any]:
         if _is_file_like(value):
             return value
-
-        value = t.cast("str | os.PathLike[str]", value)
 
         try:
             lazy = self.resolve_lazy_flag(value)
@@ -853,7 +964,11 @@ class File(ParamType):
 
             return f
         except OSError as e:
-            self.fail(f"'{format_filename(value)}': {e.strerror}", param, ctx)
+            self.fail(
+                f"'{format_filename(value)}': {e.strerror}",
+                param,
+                ctx,
+            )
 
     def shell_complete(
         self, ctx: Context, param: Parameter, incomplete: str
@@ -872,11 +987,20 @@ class File(ParamType):
         return [CompletionItem(incomplete, type="file")]
 
 
-def _is_file_like(value: t.Any) -> te.TypeGuard[t.IO[t.Any]]:
+def _is_file_like(value: t.Any) -> te.TypeIs[t.IO[t.Any]]:
     return hasattr(value, "read") or hasattr(value, "write")
 
 
-class Path(ParamType):
+class PathInfoDict(ParamTypeInfoDict):
+    exists: bool
+    file_okay: bool
+    dir_okay: bool
+    writable: bool
+    readable: bool
+    allow_dash: bool
+
+
+class Path(ParamType[str | bytes | os.PathLike[str]]):
     """The ``Path`` type is similar to the :class:`File` type, but
     returns the filename instead of an open file. Various checks can be
     enabled to validate the type of file and permissions.
@@ -911,6 +1035,16 @@ class Path(ParamType):
 
     envvar_list_splitter: t.ClassVar[str] = os.path.pathsep
 
+    exists: bool
+    file_okay: bool
+    dir_okay: bool
+    readable: bool
+    writable: bool
+    executable: bool
+    resolve_path: bool
+    allow_dash: bool
+    name: str
+
     def __init__(
         self,
         exists: bool = False,
@@ -920,9 +1054,9 @@ class Path(ParamType):
         readable: bool = True,
         resolve_path: bool = False,
         allow_dash: bool = False,
-        path_type: type[t.Any] | None = None,
+        path_type: type | None = None,
         executable: bool = False,
-    ):
+    ) -> None:
         self.exists = exists
         self.file_okay = file_okay
         self.dir_okay = dir_okay
@@ -931,16 +1065,16 @@ class Path(ParamType):
         self.executable = executable
         self.resolve_path = resolve_path
         self.allow_dash = allow_dash
-        self.type = path_type
+        self.type: type | None = path_type
 
         if self.file_okay and not self.dir_okay:
-            self.name: str = _("file")
+            self.name = _("file")
         elif self.dir_okay and not self.file_okay:
             self.name = _("directory")
         else:
             self.name = _("path")
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> PathInfoDict:
         info_dict = await super().to_info_dict()
         info_dict.update(
             exists=self.exists,
@@ -1057,7 +1191,11 @@ class Path(ParamType):
         return [CompletionItem(incomplete, type=type)]
 
 
-class Tuple(CompositeParamType):
+class TupleInfoDict(ParamTypeInfoDict):
+    types: cabc.Sequence[ParamTypeInfoDict]
+
+
+class Tuple(CompositeParamType[tuple[t.Any, ...]]):
     """The default behavior of Click is to apply a type on a value directly.
     This works well in most cases, except for when `nargs` is set to a fixed
     count and different types should be used for different items.  In this
@@ -1071,25 +1209,25 @@ class Tuple(CompositeParamType):
     :param types: a list of types that should be used for the tuple items.
     """
 
-    def __init__(self, types: cabc.Sequence[type[t.Any] | ParamType]) -> None:
-        self.types: cabc.Sequence[ParamType] = [convert_type(ty) for ty in types]
+    def __init__(self, types: cabc.Sequence[type[t.Any] | ParamType[t.Any]]) -> None:
+        self.types: cabc.Sequence[ParamType[t.Any]] = [convert_type(ty) for ty in types]
 
-    async def to_info_dict(self) -> dict[str, t.Any]:
+    async def to_info_dict(self) -> TupleInfoDict:
         info_dict = await super().to_info_dict()
         info_dict["types"] = [await t.to_info_dict() for t in self.types]
         return info_dict
 
     @property
-    def name(self) -> str:  # type: ignore
+    def name(self) -> str:  # type: ignore[override]
         return f"<{' '.join(ty.name for ty in self.types)}>"
 
     @property
-    def arity(self) -> int:  # type: ignore
+    def arity(self) -> int:  # type: ignore[override]
         return len(self.types)
 
     def convert(
         self, value: t.Any, param: Parameter | None, ctx: Context | None
-    ) -> t.Any:
+    ) -> tuple[t.Any, ...]:
         len_type = len(self.types)
         len_value = len(value)
 
@@ -1109,64 +1247,93 @@ class Tuple(CompositeParamType):
         )
 
 
-def convert_type(ty: t.Any | None, default: t.Any | None = None) -> ParamType:
+def _guess_type(
+    ty: type[t.Any] | ParamType[t.Any] | None,
+    default: t.Any | None,
+) -> type[t.Any] | tuple[type[t.Any], ...] | ParamType[t.Any] | None:
+    """Infer a type from *ty* or *default*.
+
+    Returns *ty* unchanged when it is not ``None``.  Otherwise inspects
+    *default* to produce a ``type``, a ``tuple`` of types (for tuple
+    defaults), or ``None``.
+    """
+    if ty is not None:
+        return ty
+
+    if default is None:
+        return None
+
+    if not isinstance(default, (tuple, list)):
+        return type(default)
+
+    # If the default is empty, return None so convert_type falls
+    # through to STRING.
+    if not default:
+        return None
+
+    item = default[0]
+
+    # A sequence of iterables needs to detect the inner types.
+    # Can't call convert_type recursively because that would
+    # incorrectly unwind the tuple to a single type.
+    if isinstance(item, (tuple, list)):
+        return tuple(map(type, item))
+
+    return type(item)
+
+
+@t.overload
+def convert_type(ty: None, default: None = None) -> StringParamType: ...
+@t.overload
+def convert_type(
+    ty: type | ParamType[t.Any], default: t.Any | None = None
+) -> ParamType[t.Any]: ...
+@t.overload
+def convert_type(
+    ty: t.Any | None, default: t.Any | None = None
+) -> ParamType[t.Any]: ...
+def convert_type(
+    ty: t.Any | None = None, default: t.Any | None = None
+) -> ParamType[t.Any]:
     """Find the most appropriate :class:`ParamType` for the given Python
     type. If the type isn't provided, it can be inferred from a default
     value.
     """
-    guessed_type = False
+    guessed = _guess_type(ty, default)
+    is_guessed = guessed is not ty
 
-    if ty is None and default is not None:
-        if isinstance(default, (tuple, list)):
-            # If the default is empty, ty will remain None and will
-            # return STRING.
-            if default:
-                item = default[0]
+    if isinstance(guessed, tuple):
+        return Tuple(guessed)
 
-                # A tuple of tuples needs to detect the inner types.
-                # Can't call convert recursively because that would
-                # incorrectly unwind the tuple to a single type.
-                if isinstance(item, (tuple, list)):
-                    ty = tuple(map(type, item))
-                else:
-                    ty = type(item)
-        else:
-            ty = type(default)
+    if isinstance(guessed, ParamType):
+        return guessed
 
-        guessed_type = True
-
-    if isinstance(ty, tuple):
-        return Tuple(ty)
-
-    if isinstance(ty, ParamType):
-        return ty
-
-    if ty is str or ty is None:
+    if guessed is str or guessed is None:
         return STRING
 
-    if ty is int:
+    if guessed is int:
         return INT
 
-    if ty is float:
+    if guessed is float:
         return FLOAT
 
-    if ty is bool:
+    if guessed is bool:
         return BOOL
 
-    if guessed_type:
+    if is_guessed:
         return STRING
 
     if __debug__:
         try:
-            if issubclass(ty, ParamType):
+            if issubclass(guessed, ParamType):
                 raise AssertionError(
-                    f"Attempted to use an uninstantiated parameter type ({ty})."
+                    f"Attempted to use an uninstantiated parameter type ({guessed})."
                 )
         except TypeError:
-            # ty is an instance (correct), so issubclass fails.
+            # guessed is an instance (correct), so issubclass fails.
             pass
 
-    return FuncParamType(ty)
+    return FuncParamType(guessed)
 
 
 #: A dummy parameter type that just does nothing.  From a user's
@@ -1177,29 +1344,29 @@ def convert_type(ty: t.Any | None, default: t.Any | None = None) -> ParamType:
 #:
 #: For path related uses the :class:`Path` type is a better choice but
 #: there are situations where an unprocessed type is useful which is why
-#: it is is provided.
+#: it is provided.
 #:
 #: .. versionadded:: 4.0
-UNPROCESSED = UnprocessedParamType()
+UNPROCESSED: t.Final[UnprocessedParamType] = UnprocessedParamType()
 
 #: A unicode string parameter type which is the implicit default.  This
 #: can also be selected by using ``str`` as type.
-STRING = StringParamType()
+STRING: t.Final[StringParamType] = StringParamType()
 
 #: An integer parameter.  This can also be selected by using ``int`` as
 #: type.
-INT = IntParamType()
+INT: t.Final[IntParamType] = IntParamType()
 
 #: A floating point value parameter.  This can also be selected by using
 #: ``float`` as type.
-FLOAT = FloatParamType()
+FLOAT: t.Final[FloatParamType] = FloatParamType()
 
 #: A boolean parameter.  This is the default for boolean flags.  This can
 #: also be selected by using ``bool`` as a type.
-BOOL = BoolParamType()
+BOOL: t.Final[BoolParamType] = BoolParamType()
 
 #: A UUID parameter.
-UUID = UUIDParameterType()
+UUID: t.Final[UUIDParameterType] = UUIDParameterType()
 
 
 class OptionHelpExtra(t.TypedDict, total=False):

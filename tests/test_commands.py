@@ -312,6 +312,33 @@ def test_invoked_subcommand(runner):
     assert result.output == "no subcommand, use default\nin subcommand\n"
 
 
+@pytest.mark.parametrize(
+    ("chain", "invoke_without_command", "metavar"),
+    [
+        (False, False, "COMMAND [ARGS]..."),
+        (False, True, "[COMMAND] [ARGS]..."),
+        (True, False, "COMMAND1 [ARGS]... [COMMAND2 [ARGS]...]..."),
+        (True, True, "[COMMAND1] [ARGS]... [COMMAND2 [ARGS]...]..."),
+    ],
+)
+def test_subcommand_metavar_marks_optional(
+    runner, chain, invoke_without_command, metavar
+):
+    """The leading subcommand token is bracketed only when it is optional."""
+
+    @click.group(chain=chain, invoke_without_command=invoke_without_command)
+    def cli():
+        pass
+
+    @cli.command()
+    def sub():
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert result.output.splitlines()[0] == f"Usage: cli [OPTIONS] {metavar}"
+
+
 def test_aliased_command_canonical_name(runner):
     class AliasedGroup(click.Group):
         def get_command(self, ctx, cmd_name):
@@ -507,6 +534,22 @@ def test_deprecated_in_help_messages(runner, doc, deprecated):
 
 
 @pytest.mark.parametrize("deprecated", [True, "USE OTHER COMMAND INSTEAD"])
+@pytest.mark.parametrize("doc", ["", None])
+def test_deprecated_empty_help_no_leading_space(runner, doc, deprecated):
+    """A command with empty or missing help text must render the deprecation
+    label at the normal indentation, without a stray leading space.
+    """
+
+    @click.command(deprecated=deprecated, help=doc)
+    def cli():
+        pass
+
+    out = runner.invoke(cli, ["--help"]).output
+    assert "\n  (DEPRECATED" in out
+    assert "\n   (DEPRECATED" not in out
+
+
+@pytest.mark.parametrize("deprecated", [True, "USE OTHER COMMAND INSTEAD"])
 def test_deprecated_in_invocation(runner, deprecated):
     @click.command(deprecated=deprecated)
     def deprecated_cmd():
@@ -590,3 +633,35 @@ def test_abort_exceptions_with_disabled_standalone_mode(runner, exc):
     assert rv.exit_code == 1
     assert isinstance(rv.exception.__cause__, exc)
     assert rv.exception.__cause__.args == ("catch me!",)
+
+
+def test_unknown_command(runner):
+    result = runner.invoke(click.Group(), "unknown")
+    assert result.exception
+    assert "No such command 'unknown'." in result.output
+
+
+@pytest.mark.parametrize(
+    ("value", "expect"),
+    [
+        ("pause", "Did you mean 'push'?"),
+        ("decline", "(Did you mean one of: 'declare', 'refine'?)"),
+    ],
+)
+def test_suggest_possible_commands(runner, value, expect):
+    cli = click.Group()
+
+    @cli.command()
+    def push():
+        pass
+
+    @cli.command()
+    def declare():
+        pass
+
+    @cli.command()
+    def refine():
+        pass
+
+    result = runner.invoke(cli, [value])
+    assert expect in result.output

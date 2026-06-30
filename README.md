@@ -65,7 +65,7 @@ The :meth:`BaseCommand.__call__` alias now invokes the main entry point via
 `anyio.run`. If you already have an async main program, simply use
 ``await cmd.main()`` instead of ``cmd()``.
 
-:func:`asyncclick.prompt` is asyncronous and accepts a ``blocking`` parameter
+:func:`asyncclick.prompt` is asynchronous and accepts a ``blocking`` parameter
 that switches between "doesn't affect your event loop but has unwanted effects when
 interrupted" (bugfix pending) and "pauses your event loop but is safe to interrupt"
 with Control-C". The latter is the default until we fix that bug.
